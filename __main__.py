@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import requests
+import pickle
 
 from auth import get_verification_tokens, login
 
@@ -56,11 +57,28 @@ def menu():
             return
 
 
+def load_session():
+    """
+    Load saved session from file.
+
+    :return: Session object or None
+    """
+    try:
+        with open("auth_session.pkl", "rb") as f:
+            print("[*] Loading saved session...")
+            session = pickle.load(f)
+    except Exception:
+        print("[*] No saved session found. Logging in...")
+        session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
+        with open("auth_session.pkl", "wb") as f:
+            pickle.dump(session, f)
+    return session
+
 def main():
     """
     Main function to handle authentication, token retrieval, room search, and booking.
     """
-    session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
+    session = load_session()
     if not session:
         print("[-] Could not establish a session.")
         sys.exit(1)
