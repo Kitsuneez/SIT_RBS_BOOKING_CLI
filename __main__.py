@@ -12,7 +12,7 @@ from auth import get_verification_tokens, login
 
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
-DATE = "18 Feb 2026"
+DATE = "25 Feb 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 
@@ -63,15 +63,18 @@ def load_session():
 
     :return: Session object or None
     """
-    try:
-        with open("auth_session.pkl", "rb") as f:
-            print("[*] Loading saved session...")
-            session = pickle.load(f)
-    except Exception:
-        print("[*] No saved session found. Logging in...")
-        session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
-        with open("auth_session.pkl", "wb") as f:
-            pickle.dump(session, f)
+    # try:
+    #     with open("auth_session.pkl", "rb") as f:
+    #         print("[*] Loading saved session...")
+    #         session = pickle.load(f)
+    # except Exception:
+    #     print("[*] No saved session found. Logging in...")
+    #     session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
+    #     with open("auth_session.pkl", "wb") as f:
+    #         pickle.dump(session, f)
+    session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
+    with open("auth_session.pkl", "wb") as f:
+        pickle.dump(session, f)
     return session
 
 def main():
@@ -128,28 +131,31 @@ def main():
             check_availability(room_num, token, session)
 
             if available_slots:
-                print(f"\n{'='*60}")
-                book = input(
-                    "Do you want to book slots? (Y/n): ").strip().lower()
-
-                if book in ['y', 'Y', '']:
-                    slot_input = input(
-                        "Enter slot numbers to book (comma-separated, e.g., 0,1,2) \
-                            or ('-' for a range, e.g., 0-2): ").strip()
-                    try:
-                        if '-' in slot_input:
-                            start, end = map(int, slot_input.split('-'))
-                            slot_indices = list(range(start, end + 1))
-                        else:
-                            slot_indices = [int(x.strip()) for x in slot_input.split(',')]
-                        confirm_booking(slot_indices, token, session)
-                    except ValueError:
-                        print("Invalid input. Please enter numbers separated by commas.")
-                        # to do handle invalid input better
-                else:
-                    print("Returning to room selection...")
+                booking(token,session)
             else:
                 print("\nNo available slots for this room.")
+
+def booking(token, session):
+    print(f"\n{'='*60}")
+    book = input(
+        "Do you want to book slots? (Y/n): ").strip().lower()
+
+    if book in ['y', 'Y', '']:
+        slot_input = input(
+            "Enter slot numbers to book (comma-separated, e.g., 0,1,2) \
+or ('-' for a range, e.g., 0-2): ").strip()
+        try:
+            if '-' in slot_input:
+                start, end = map(int, slot_input.split('-'))
+                slot_indices = list(range(start, end + 1))
+            else:
+                slot_indices = [int(x.strip()) for x in slot_input.split(',')]
+            confirm_booking(slot_indices, token, session)
+        except ValueError:
+            print("Invalid input. Please enter numbers separated by commas.")
+            # to do handle invalid input better
+    else:
+        print("Returning to room selection...")
 
 
 def check_availability(num, token, session):
@@ -285,6 +291,7 @@ def confirm_booking(slot_indices, token, session):
             response.raise_for_status()
             if response.status_code == 200:
                 print("Booking finalized successfully.")
+                sys.exit(0)
             else:
                 print(f"Failed to finalize booking. Status code: {response.status_code}")
 
