@@ -362,4 +362,8 @@ def confirm_booking(slot_indices, token, session):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nExiting... Goodbye!")
+        sys.exit(0)
