@@ -4,17 +4,26 @@ Handles user authentication, room search, availability check, and booking.
 """
 import json
 import os
+import re
 import sys
-import requests
 import pickle
+import requests
 
 from auth import get_verification_tokens, login
+
+
+class SessionExpiredError(Exception):
+    """Raised when the authentication session has expired."""
+    pass
 
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
 DATE = "04 Feb 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
+START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
+flag = True
+
 
 headers = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)\
@@ -52,11 +61,14 @@ def menu():
             return
         case "2":
             print("\nExiting... Goodbye!")
-            return
+            sys.exit(0)
         case _:
             print("\nInvalid choice. Please run the program again.")
             return
 
+def check_session(session):
+    response = session.get(START_URL)
+    return re.search("Your session may have expired", response.text)
 
 def load_session():
     """
@@ -64,19 +76,45 @@ def load_session():
 
     :return: Session object or None
     """
-    # try:
-    #     with open("auth_session.pkl", "rb") as f:
-    #         print("[*] Loading saved session...")
-    #         session = pickle.load(f)
-    # except Exception:
-    #     print("[*] No saved session found. Logging in...")
-    #     session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
-    #     with open("auth_session.pkl", "wb") as f:
-    #         pickle.dump(session, f)
+    try:
+        with open("auth_session.pkl", "rb") as f:
+            print("[*] Loading saved session...")
+            session = pickle.load(f)
+        if check_session(session):
+            raise SessionExpiredError("[-] Session has expired.")
+        return session
+    except SessionExpiredError as e:
+        print(e)
+    except Exception as e:
+        print(f"[-] Could not load session: {e}")
+    print("[*] Creating new session...")
     session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
-    # with open("auth_session.pkl", "wb") as f:
-    #     pickle.dump(session, f)
+    flag = False
+    with open("auth_session.pkl", "wb") as f:
+        pickle.dump(session, f)
     return session
+
+def load_token(session: requests.Session):
+    """
+    Load saved verification token from file.
+
+    :return: Verification token string or None
+    """
+    try:
+        if flag:
+            with open("token.pkl", "rb") as f:
+                print("[*] Loading saved verification token...")
+                token = pickle.load(f)
+            return token
+        else:
+            raise Exception("Session was renewed, need new token.")
+    except Exception as e:
+        print(f"[-] Could not load verification token: {e}")
+    print("[*] Retrieving new verification token...")
+    token = get_verification_tokens(session)
+    with open("token.pkl", "wb") as f:
+        pickle.dump(token, f)
+    return token
 
 def main():
     """
@@ -86,7 +124,7 @@ def main():
     if not session:
         print("[-] Could not establish a session.")
         sys.exit(1)
-    token = get_verification_tokens(session)
+    token = load_token(session)
     if not token:
         print("[-] Could not retrieve verification tokens.")
         sys.exit(1)

@@ -110,7 +110,6 @@ def get_verification_tokens(session):
     except requests.RequestException as e:
         print(f"[!] Failed to fetch booking page: {e}")
         return None
-
     token_match = re.search(r'<input name="__RequestVerificationToken" type="hidden" value="([^"]+)" />', response.text)
     if not token_match:
         print("[-] Verification token not found on booking page.")
