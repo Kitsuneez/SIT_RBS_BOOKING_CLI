@@ -5,6 +5,7 @@ import sys
 from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
+import pickle
 
 load_dotenv()
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
@@ -126,11 +127,8 @@ def main():
     if not session:
         print("[-] Could not establish a session.")
         sys.exit(1)
-    token = get_verification_tokens(session)
-    if not token:
-        print("[-] Could not retrieve verification tokens.")
-        sys.exit(1)
-    print("[*] Session and tokens are ready for booking operations.")
+    with open("auth_session.pkl", "wb") as f:
+        pickle.dump(session, f)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from auth import get_verification_tokens, login
 
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
-DATE = "25 Feb 2026"
+DATE = "04 Feb 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 
@@ -27,8 +27,9 @@ headers = {
     "Referer": "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page",
 }
 
-ls_dict = []
+
 available_slots = []
+ls_dict = []
 
 
 def menu():
@@ -73,8 +74,8 @@ def load_session():
     #     with open("auth_session.pkl", "wb") as f:
     #         pickle.dump(session, f)
     session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
-    with open("auth_session.pkl", "wb") as f:
-        pickle.dump(session, f)
+    # with open("auth_session.pkl", "wb") as f:
+    #     pickle.dump(session, f)
     return session
 
 def main():
@@ -155,6 +156,8 @@ or ('-' for a range, e.g., 0-2): ").strip()
             print("Invalid input. Please enter numbers separated by commas.")
             # to do handle invalid input better
     else:
+        ls_dict.clear()
+        available_slots.clear()
         print("Returning to room selection...")
 
 
@@ -165,6 +168,7 @@ def check_availability(num, token, session):
     :param num: Room number as string
     :param token: Verification token string
     """
+    
     avail_payload = {
         "__RequestVerificationToken": token,
         "rsrcID": ls_dict[int(num)]["RSRC_ID"],
