@@ -8,10 +8,10 @@ PASSWORD = ""
 
 ## Example
 1. run program and select first option
-    ![alt text](/include/images/image.png)
+    ![alt text](images/image.png)
 2. choose room
-    ![alt text](/include/imagesimage1.png)
+    ![alt text](images/image1.png)
 3. confirm room (y is default, press enter if yes)
-    ![alt text](/include/images/image3.png)
+    ![alt text](images/image3.png)
 4. select time slot (',' for different slots, '-' for range)
-    ![alt text](/include/images/image4.png)
+    ![alt text](images/image4.png)
