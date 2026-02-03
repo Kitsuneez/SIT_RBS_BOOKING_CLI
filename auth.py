@@ -1,21 +1,48 @@
+"""
+Authentication module for handling login and session management.
+"""
 import os
 import html
 import re
 import sys
 from urllib.parse import urlparse
+import pickle
 import requests
 from dotenv import load_dotenv
-import pickle
 
 load_dotenv()
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
+        AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;\
+        q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
 }
 
-def login(username, password):
+
+def login(username: str, password: str) -> requests.Session | None:
+    """
+    Authenticate a user via ADFS and establish a session.
+
+    This function performs ADFS authentication by:
+    1. Retrieving the ADFS login page URL
+    2. Submitting user credentials via POST request
+    3. Extracting and posting the WS-Fed token to complete authentication
+    4. Returning an authenticated session object on success
+
+    Args:
+        username (str): The user's login username
+        password (str): The user's login password
+
+    Returns:
+        requests.Session: An authenticated session object if login succeeds
+        None: If login fails at any stage (invalid credentials, network errors, 
+              login loop detection, or unexpected responses)
+
+    Raises:
+        SystemExit: If the ADFS URL cannot be retrieved from the initial login page
+    """
     session = requests.Session()
     adfs_url = get_login_page(session)
     if adfs_url is None:
@@ -32,10 +59,10 @@ def login(username, password):
         login_response = session.post(adfs_url, data=payload)
     except requests.exceptions.RequestException as e:
         print(f"[-] Login request failed: {e}")
-        return
+        return None
     if "Incorrect user ID or password" in login_response.text:
         print("[-] Login failed: Incorrect username or password")
-        return
+        return None
     action_url, wsfed_payload = extract_wsfed_payload(login_response)
     if action_url.startswith("/"):
         parsed_url = urlparse(adfs_url)
@@ -47,31 +74,35 @@ def login(username, password):
         "Content-Type": "application/x-www-form-urlencoded"
     }
     try:
-        final_response = session.post(action_url, data=wsfed_payload, headers=callback_headers)
+        final_response = session.post(
+            action_url, data=wsfed_payload, headers=callback_headers)
     except requests.RequestException as e:
         print(f"[!] Failed to post WS-Fed token: {e}")
-        return
+        return None
 
     if final_response.status_code == 200:
         if "Sign In" in final_response.text or "adfs/ls" in final_response.url:
             print("[!] Login loop detected. Back at login page.")
-            return
+            return None
         return session
-    print(f"[!] Unexpected response after WS-Fed post: {final_response.status_code}")
-    return
+    print(
+        f"[!] Unexpected response after WS-Fed post: {final_response.status_code}")
+    return None
 
 
-def extract_wsfed_payload(response_text):
+def extract_wsfed_payload(response_text: requests.Response) -> tuple[str, dict]:
     """
     Extracts the WS-Fed payload and action URL from the login response.
-    
+
     :param response_text: Response object from the login POST request.
     :return: Tuple of (action_url, wsfed_payload)
     """
-    hidden_inputs = re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]+)"', response_text.text)
+    hidden_inputs = re.findall(
+        r'<input type="hidden" name="([^"]+)" value="([^"]+)"', response_text.text)
     # HTML unescape values
-    wsfed_payload = {name: html.unescape(value) for name, value in hidden_inputs}
-    
+    wsfed_payload = {name: html.unescape(value)
+                     for name, value in hidden_inputs}
+
     form_action_match = re.search(r'action="([^"]+)"', response_text.text)
     if not form_action_match:
         print("[-] Failed to find form action URL for WS-Fed submission")
@@ -79,10 +110,11 @@ def extract_wsfed_payload(response_text):
     action_url = form_action_match.group(1)
     return action_url, wsfed_payload
 
-def get_login_page(session):
+
+def get_login_page(session: requests.Session) -> str | None:
     """
     Retrieves the login page to initiate the authentication process.
-    
+
     :param session: requests.Session object
     :return: URL of the ADFS login page
     """
@@ -91,16 +123,16 @@ def get_login_page(session):
     response = session.get(START_URL)
     if "Sign In" not in response.text and "adfs/ls" not in response.url:
         print("[*] Failed to get login page")
-        return
+        return None
     adfs_url = response.url
     print("[*] Submitting login form...")
     return adfs_url
 
-    
-def get_verification_tokens(session):
+
+def get_verification_tokens(session: requests.Session) -> str | None:
     """
     Retrieves verification tokens required for booking.
-    
+
     :param session: requests.Session object
     :return: Verification token string
     """
@@ -110,7 +142,8 @@ def get_verification_tokens(session):
     except requests.RequestException as e:
         print(f"[!] Failed to fetch booking page: {e}")
         return None
-    token_match = re.search(r'<input name="__RequestVerificationToken" type="hidden" value="([^"]+)" />', response.text)
+    token_match = re.search(
+        r'<input name="__RequestVerificationToken" type="hidden" value="([^"]+)" />', response.text)
     if not token_match:
         print("[-] Verification token not found on booking page.")
         return None
@@ -118,11 +151,17 @@ def get_verification_tokens(session):
     print("[*] Verification token extracted.")
     return token
 
+
 def main():
     """
     Main function to handle authentication and token retrieval.
     """
-    session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
+    username = os.getenv("USERNAME")
+    password = os.getenv("PASSWORD")
+    if username is None or password is None:
+        print("[-] USERNAME or PASSWORD environment variables not set.")
+        sys.exit(1)
+    session = login(username, password)
     if not session:
         print("[-] Could not establish a session.")
         sys.exit(1)

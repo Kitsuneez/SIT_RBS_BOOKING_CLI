@@ -14,7 +14,7 @@ from auth import get_verification_tokens, login
 
 class SessionExpiredError(Exception):
     """Raised when the authentication session has expired."""
-    pass
+
 
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
@@ -22,7 +22,6 @@ DATE = "04 Feb 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
-flag = True
 
 
 headers = {
@@ -37,11 +36,11 @@ headers = {
 }
 
 
-available_slots = []
-ls_dict = []
+available_slots: list[dict[str, str]] = []
+ls_dict: list[dict[str, str]] = []
 
 
-def menu():
+def menu() -> None:
     """
     Display the main menu and handle user choices.
 
@@ -66,15 +65,23 @@ def menu():
             print("\nInvalid choice. Please run the program again.")
             return
 
-def check_session(session):
+def check_session(session: requests.Session) -> bool:
+    """
+    Check if the current session is still valid.
+    
+    :param session: Active session object
+    :type session: requests.Session
+    :return: True if session is expired, False otherwise
+    :rtype: bool
+    """
     response = session.get(START_URL)
-    return re.search("Your session may have expired", response.text)
+    return bool(re.search("Your session may have expired", response.text))
 
-def load_session():
+def load_session() -> tuple[requests.Session | None, bool]:
     """
     Load saved session from file.
 
-    :return: Session object or None
+    :return: Tuple of (Session object or None, is_cached flag)
     """
     try:
         with open("auth_session.pkl", "rb") as f:
@@ -82,33 +89,36 @@ def load_session():
             session = pickle.load(f)
         if check_session(session):
             raise SessionExpiredError("[-] Session has expired.")
-        return session
-    except SessionExpiredError as e:
-        print(e)
-    except Exception as e:
+        return session, True
+    except (FileNotFoundError, pickle.UnpicklingError, OSError, SessionExpiredError) as e:
         print(f"[-] Could not load session: {e}")
     print("[*] Creating new session...")
-    session = login(os.getenv("USERNAME"), os.getenv("PASSWORD"))
-    flag = False
+    username = os.getenv("USERNAME")
+    password = os.getenv("PASSWORD")
+    if username is None or password is None:
+        print("[-] USERNAME or PASSWORD environment variables not set.")
+        sys.exit(1)
+    session = login(username, password)
     with open("auth_session.pkl", "wb") as f:
         pickle.dump(session, f)
-    return session
+    return session, False
 
-def load_token(session: requests.Session):
+def load_token(session: requests.Session, is_session_cached: bool) -> str | None:
     """
     Load saved verification token from file.
 
+    :param session: Active session object
+    :param is_session_cached: Whether the session was loaded from cache
     :return: Verification token string or None
     """
     try:
-        if flag:
+        if is_session_cached:
             with open("token.pkl", "rb") as f:
                 print("[*] Loading saved verification token...")
                 token = pickle.load(f)
             return token
-        else:
-            raise Exception("Session was renewed, need new token.")
-    except Exception as e:
+        raise SessionExpiredError("Session was renewed, need new token.")
+    except (SessionExpiredError, FileNotFoundError, pickle.UnpicklingError, OSError) as e:
         print(f"[-] Could not load verification token: {e}")
     print("[*] Retrieving new verification token...")
     token = get_verification_tokens(session)
@@ -120,11 +130,11 @@ def main():
     """
     Main function to handle authentication, token retrieval, room search, and booking.
     """
-    session = load_session()
+    session, is_cached = load_session()
     if not session:
         print("[-] Could not establish a session.")
         sys.exit(1)
-    token = load_token(session)
+    token = load_token(session, is_cached)
     if not token:
         print("[-] Could not retrieve verification tokens.")
         sys.exit(1)
@@ -151,7 +161,7 @@ def main():
         response = session.post(BOOKING_URL, data=payload)
         response.raise_for_status()
         print(f"Status code: {response.status_code}")
-        rooms = None
+        rooms: list[dict[str, str]] = []
         # Try to parse as JSON if it looks like JSON
         if response.text.strip().startswith('{') or response.text.strip().startswith('['):
             rooms = response.json()
@@ -175,6 +185,12 @@ def main():
                 print("\nNo available slots for this room.")
 
 def booking(token, session):
+    """
+    confirms with user if they want to book slots from this room
+    
+    :param token: Verification token string
+    :param session: Active session object
+    """
     print(f"\n{'='*60}")
     book = input(
         "Do you want to book slots? (Y/n): ").strip().lower()
@@ -206,7 +222,6 @@ def check_availability(num, token, session):
     :param num: Room number as string
     :param token: Verification token string
     """
-    
     avail_payload = {
         "__RequestVerificationToken": token,
         "rsrcID": ls_dict[int(num)]["RSRC_ID"],
@@ -250,7 +265,12 @@ def check_availability(num, token, session):
         print(f"JSON decode error: {e}")
         print(f"Response text: {response.text}")
 
-def display_rooms(rooms):
+def display_rooms(rooms: list[dict[str, str]]) -> None:
+    """
+    Display available rooms in a formatted table.
+
+    :param rooms: List of room dictionaries
+    """
     # prints the room and rsrc_id
     print("============Available Rooms===============")
     print("No.|Resource ID | Resource Name")
