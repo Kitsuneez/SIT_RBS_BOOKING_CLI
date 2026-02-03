@@ -10,6 +10,7 @@ import pickle
 import requests
 
 from auth import get_verification_tokens, login
+from booking import BookingSystem
 
 
 class SessionExpiredError(Exception):
@@ -18,7 +19,8 @@ class SessionExpiredError(Exception):
 
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
-DATE = "04 Feb 2026"
+GET_ALL_ROOMS_URL = "https://rbs.singaporetech.edu.sg/MRB002/ResourceReload"
+DATE = "05 Feb 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
@@ -36,7 +38,7 @@ headers = {
 }
 
 
-available_slots: list[dict[str, str]] = []
+available_slots: dict[str, list[dict[str, str]]] = {}
 ls_dict: list[dict[str, str]] = []
 
 
@@ -141,6 +143,10 @@ def main():
     print("[*] Session and tokens are ready for booking operations.")
     menu()
 
+    # bookingSystem = BookingSystem()
+    # session = bookingSystem.load_session()
+    # token = bookingSystem.load_token()
+
     payload = {
         "__RequestVerificationToken": token,
         "CapacityOperator": "<",
@@ -172,17 +178,16 @@ def main():
         print(f"JSON decode error: {e}")
         return
     while True:
-        display_rooms(rooms)
-        if not ls_dict:
-            print("\nNo rooms available.")
-        else:
-            room_num = input("\nEnter room number to check availability: ").strip()
-            check_availability(room_num, token, session)
+        map_rooms(rooms)
 
-            if available_slots:
-                booking(token,session)
-            else:
-                print("\nNo available slots for this room.")
+        # room_num = input("\nEnter room number to check availability: ").strip()
+        check_availability(token, session)
+
+        if available_slots:
+            booking(token,session)
+        else:
+            print("\nNo available slots for this room.")
+            sys.exit(1)
 
 def booking(token, session):
     """
@@ -192,97 +197,116 @@ def booking(token, session):
     :param session: Active session object
     """
     print(f"\n{'='*60}")
-    book = input(
-        "Do you want to book slots? (Y/n): ").strip().lower()
-
-    if book in ['y', 'Y', '']:
-        slot_input = input(
+    room_name = input("Enter room name (E2-XX-XXX-DRXXX): ").strip().upper()
+    slot_input = input(
             "Enter slot numbers to book (comma-separated, e.g., 0,1,2) \
 or ('-' for a range, e.g., 0-2): ").strip()
-        try:
-            if '-' in slot_input:
-                start, end = map(int, slot_input.split('-'))
-                slot_indices = list(range(start, end + 1))
-            else:
-                slot_indices = [int(x.strip()) for x in slot_input.split(',')]
-            confirm_booking(slot_indices, token, session)
-        except ValueError:
-            print("Invalid input. Please enter numbers separated by commas.")
-            # to do handle invalid input better
-    else:
-        ls_dict.clear()
-        available_slots.clear()
-        print("Returning to room selection...")
+    try:
+        if '-' in slot_input:
+            start, end = map(int, slot_input.split('-'))
+            slot_indices = list(range(start, end + 1))
+        else:
+            slot_indices = [int(x.strip()) for x in slot_input.split(',')]
+        confirm_booking(room_name, slot_indices, token, session)
+    except ValueError:
+        print("Invalid input. Please enter numbers separated by commas.")
 
 
-def check_availability(num, token, session):
+def check_availability(token, session):
     """
     Check room availability for a given room number.
 
     :param num: Room number as string
     :param token: Verification token string
     """
-    avail_payload = {
-        "__RequestVerificationToken": token,
-        "rsrcID": ls_dict[int(num)]["RSRC_ID"],
-        "rsrcTypID": ls_dict[int(num)]["RSRC_TYP_ID"],
-        "bookingstatus": "Available",
-        "SearchDate": DATE,
-        "SearchStartTime": "07:00",
-        "SearchEndTime": "22:00",
-        "BKG_RUL": "true",
-        "IS_SLD_Resource": "false",
-    }
+    resourceList = []
+    for d in ls_dict:
+        resourceList.append({
+            "RSRC_ID": d["RSRC_ID"],
+            "IS_SLD": False,
+            "Event_Type": 0,
+            "Disclaimer": "Photo is a sample/illustration for typical DR layout."
+        })
+    with open("mapping.json", "r", encoding="utf-8") as f:
+        mapping = json.load(f)
     try:
-        print(f"\nChecking availability for room {num}...")
-        response = session.post(CHECK_AVAILABILITY_URL, data=avail_payload)
+        parameter = [{
+            "MRB002Date": "04 Feb 2026",
+            "MRB002StartTime": "07:00",
+            "MRB002EndTime": "22:00",
+            "ResourceList": resourceList[:9]
+        }]
+        avail_payload = {
+            "__RequestVerificationToken": token,
+            "bookingstatus": "Available",
+            "parameter": json.dumps(parameter),
+            "_rsrcCat": "facilities"
+        }
+        # print(f"\nChecking availability for room {num}...")
+        response = session.post(GET_ALL_ROOMS_URL, data=avail_payload)
         response.raise_for_status()
-        if response.text.strip().startswith('['):
-            slots_data = response.json()
-            print(f"\n{'='*60}")
-            print(f"Available Time Slots for {DATE}")
-            print(f"{'='*60}")
+        html = response.text
+        rooms = []
+        room_blocks = re.findall(r'<div class="card fa-sm">[\s\S]*?(?=<div class="card fa-sm">|$)',
+            html
+        )
 
-            for slot in slots_data:
-                if slot['SLT_STATUS'] == 1:
-                    available_slots.append({
-                        'rsrc_id': ls_dict[int(num)]["RSRC_ID"],
-                        'rsrc_typ_id': ls_dict[int(num)]["RSRC_TYP_ID"],
-                        'time': slot['SLT_Desc'],
-                        'datetime': slot['SLT_Date_Time'],
-                        'canBooked': slot['canBooked'],
-                        'slot_id': slot['SLT_ID']
-                    })
-            # Display in a nice format
-            for i, slot in enumerate(available_slots):
-                print(f"{i:2d}. {slot['time']}")
-        else:
-            print(f"Response: {response.text}")
+        for block in room_blocks:
+            name_match = re.search(
+                r'<span class="d-block d-md-none font-weight-bold">Name:</span>\s*([A-Z0-9\-]+)',
+                block
+            )
 
-    except requests.exceptions.RequestException as e:
+            if not name_match:
+                continue
+
+            name = name_match.group(1)
+
+            slots = re.findall(
+                r"data-sltid=([a-f0-9\-]+)[\s\S]*?class='time-slot-white[\s\S]*?>\s*(\d{2}:\d{2}-\d{2}:\d{2})",
+                block
+            )
+
+            rooms.append({
+                name: slots
+            })
+
+        for room in rooms:
+            #displays room with available slots and store into available_slots dict
+            for room_name, slots in room.items():
+                if slots:
+                    available_slots[room_name] = []
+                    for slot in slots:
+                        available_slots[room_name].append({
+                            "slot_id": slot[0],
+                            "time": slot[1],
+                            "rsrc_id": mapping[room_name],
+                            "rsrc_typ_id": ls_dict[0]["RSRC_TYP_ID"]
+                        })
+                    print(f"\nAvailable slots for room {room_name}:")
+                    for i, slot in enumerate(available_slots[room_name]):
+                        print(f"  [{i}] {slot['time']}")
+
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"An error occurred: {e}")
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {e}")
-        print(f"Response text: {response.text}")
 
-def display_rooms(rooms: list[dict[str, str]]) -> None:
+def map_rooms(rooms: list[dict[str, str]]) -> None:
     """
     Display available rooms in a formatted table.
 
     :param rooms: List of room dictionaries
     """
     # prints the room and rsrc_id
-    print("============Available Rooms===============")
-    print("No.|Resource ID | Resource Name")
-    for i, res in enumerate(rooms):
+    for _, res in enumerate(rooms):
         ls_dict.append({
             "RSRC_ID": res['RSRC_ID'],
             "RSRC_TYP_ID": res['RSRC_TYP_ID']
         })
-        print(f"{i:2d} | {res['RSRC_ID']} | {res['RSRC_NAME']}")
+    with open("mapping.json", "w", encoding="utf-8") as f:
+        json.dump({res["RSRC_NAME"]: res["RSRC_ID"] for res in rooms}, f, indent=4)
 
 
-def confirm_booking(slot_indices, token, session):
+def confirm_booking(room_name, slot_indices, token, session):
     """
     Book multiple consecutive time slots
     slot_indices: list of slot numbers to book (e.g., [0, 1] for first two slots)
@@ -290,12 +314,11 @@ def confirm_booking(slot_indices, token, session):
     if not available_slots:
         print("No slots available. Check availability first.")
         return
-
     # Build the slot list for booking
     slot_list = []
     for i, idx in enumerate(slot_indices):
-        if idx < len(available_slots):
-            slot = available_slots[idx]
+        if idx < len(available_slots[room_name]):
+            slot = available_slots[room_name][idx]
             slot_list.append({
                 "SRNO": i + 1,
                 "SLT_ID": slot['slot_id'],
@@ -309,14 +332,12 @@ def confirm_booking(slot_indices, token, session):
     if not slot_list:
         print("Invalid slot selection")
         return
-
-    # Get resource info from first selected slot
-    first_slot = available_slots[slot_indices[0]]
+    first_slot = available_slots[room_name][slot_indices[0]]["rsrc_id"]
 
     booking_payload = {
         "__RequestVerificationToken": token,
-        "RSRC_ID": first_slot['rsrc_id'],
-        "RSRC_TYP_ID": first_slot['rsrc_typ_id'],
+        "RSRC_ID": first_slot,
+        "RSRC_TYP_ID": ls_dict[0]["RSRC_TYP_ID"],
         "SearchDate": DATE,
         "SlotList": json.dumps(slot_list),
         "APPRV_EXEMP": "false",
@@ -340,7 +361,7 @@ def confirm_booking(slot_indices, token, session):
             print("[*] Finalizing booking...")
             payload = {
                 "__RequestVerificationToken": token,
-                "RSRC_TYP_ID": first_slot['rsrc_typ_id'],
+                "RSRC_TYP_ID": first_slot,
                 "NUM_ATTND": "1",
                 "Event_TypeText": "",
                 "Acad_Text": "",
@@ -359,6 +380,8 @@ def confirm_booking(slot_indices, token, session):
 
     except requests.exceptions.RequestException as e:
         print(f"Booking failed: {e}")
+        print("Checking your remaining booking hours")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
