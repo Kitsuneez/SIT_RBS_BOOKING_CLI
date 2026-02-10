@@ -1,6 +1,6 @@
 ## Setup environment
-`pip install -r requirements.txt && touch .env`
-## Edit .env to include username
+`pip install -r requirements.txt`
+## Add username and password for login into .env
 USERNAME = ""<br>
 PASSWORD = ""
 ## To run script
