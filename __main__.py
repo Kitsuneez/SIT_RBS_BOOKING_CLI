@@ -2,15 +2,17 @@
 Main module for SIT Room Booking System.
 Handles user authentication, room search, availability check, and booking.
 """
+import asyncio
 import json
 import os
 import re
 import sys
 import pickle
+import aiohttp
 import requests
+import time
 
 from auth import get_verification_tokens, login
-from booking import BookingSystem
 
 
 class SessionExpiredError(Exception):
@@ -20,7 +22,7 @@ class SessionExpiredError(Exception):
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
 GET_ALL_ROOMS_URL = "https://rbs.singaporetech.edu.sg/MRB002/ResourceReload"
-DATE = "05 Feb 2026"
+DATE = "13 Feb 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
@@ -42,35 +44,10 @@ available_slots: dict[str, list[dict[str, str]]] = {}
 ls_dict: list[dict[str, str]] = []
 
 
-def menu() -> None:
-    """
-    Display the main menu and handle user choices.
-
-    :param token: Verification token string
-    :param session: Authenticated session object
-    """
-    print("\n" + "="*60)
-    print("SIT Room Booking System")
-    print("="*60)
-    print("\nOptions:")
-    print("1. Search and book a room")
-    print("2. Exit")
-    print("="*60)
-    choice = input("\nEnter your choice (1-2): ").strip()
-    match choice:
-        case "1":
-            return
-        case "2":
-            print("\nExiting... Goodbye!")
-            sys.exit(0)
-        case _:
-            print("\nInvalid choice. Please run the program again.")
-            return
-
 def check_session(session: requests.Session) -> bool:
     """
     Check if the current session is still valid.
-    
+
     :param session: Active session object
     :type session: requests.Session
     :return: True if session is expired, False otherwise
@@ -78,6 +55,7 @@ def check_session(session: requests.Session) -> bool:
     """
     response = session.get(START_URL)
     return bool(re.search("Your session may have expired", response.text))
+
 
 def load_session() -> tuple[requests.Session | None, bool]:
     """
@@ -105,6 +83,7 @@ def load_session() -> tuple[requests.Session | None, bool]:
         pickle.dump(session, f)
     return session, False
 
+
 def load_token(session: requests.Session, is_session_cached: bool) -> str | None:
     """
     Load saved verification token from file.
@@ -128,6 +107,7 @@ def load_token(session: requests.Session, is_session_cached: bool) -> str | None
         pickle.dump(token, f)
     return token
 
+
 def main():
     """
     Main function to handle authentication, token retrieval, room search, and booking.
@@ -141,12 +121,7 @@ def main():
         print("[-] Could not retrieve verification tokens.")
         sys.exit(1)
     print("[*] Session and tokens are ready for booking operations.")
-    menu()
-
-    # bookingSystem = BookingSystem()
-    # session = bookingSystem.load_session()
-    # token = bookingSystem.load_token()
-
+    # menu()
     payload = {
         "__RequestVerificationToken": token,
         "CapacityOperator": "<",
@@ -181,25 +156,25 @@ def main():
         map_rooms(rooms)
 
         # room_num = input("\nEnter room number to check availability: ").strip()
-        check_availability(token, session)
-
+        asyncio.run(check_availability_async(token, session))
         if available_slots:
-            booking(token,session)
+            booking(token, session)
         else:
             print("\nNo available slots for this room.")
             sys.exit(1)
 
+
 def booking(token, session):
     """
     confirms with user if they want to book slots from this room
-    
+
     :param token: Verification token string
     :param session: Active session object
     """
     print(f"\n{'='*60}")
     room_name = input("Enter room name (E2-XX-XXX-DRXXX): ").strip().upper()
     slot_input = input(
-            "Enter slot numbers to book (comma-separated, e.g., 0,1,2) \
+        "Enter slot numbers to book (comma-separated, e.g., 0,1,2) \
 or ('-' for a range, e.g., 0-2): ").strip()
     try:
         if '-' in slot_input:
@@ -212,83 +187,111 @@ or ('-' for a range, e.g., 0-2): ").strip()
         print("Invalid input. Please enter numbers separated by commas.")
 
 
-def check_availability(token, session):
+async def fetch_availability_batch(session, token, resource_batch, mapping):
     """
-    Check room availability for a given room number.
+    Fetch availability for a batch of resources asynchronously.
 
-    :param num: Room number as string
+    :param session: Active aiohttp session
     :param token: Verification token string
+    :param resource_batch: List of resource dictionaries
+    :param mapping: Room name to RSRC_ID mapping dictionary
+    :return: Dictionary of room names to available slots
     """
-    resourceList = []
-    for d in ls_dict:
-        resourceList.append({
-            "RSRC_ID": d["RSRC_ID"],
-            "IS_SLD": False,
-            "Event_Type": 0,
-            "Disclaimer": "Photo is a sample/illustration for typical DR layout."
-        })
-    with open("mapping.json", "r", encoding="utf-8") as f:
-        mapping = json.load(f)
-    try:
-        parameter = [{
-            "MRB002Date": "04 Feb 2026",
-            "MRB002StartTime": "07:00",
-            "MRB002EndTime": "22:00",
-            "ResourceList": resourceList[:9]
-        }]
-        avail_payload = {
-            "__RequestVerificationToken": token,
-            "bookingstatus": "Available",
-            "parameter": json.dumps(parameter),
-            "_rsrcCat": "facilities"
-        }
-        # print(f"\nChecking availability for room {num}...")
-        response = session.post(GET_ALL_ROOMS_URL, data=avail_payload)
-        response.raise_for_status()
-        html = response.text
-        rooms = []
-        room_blocks = re.findall(r'<div class="card fa-sm">[\s\S]*?(?=<div class="card fa-sm">|$)',
-            html
+    parameter = [{
+        "MRB002Date": DATE,
+        "MRB002StartTime": "07:00",
+        "MRB002EndTime": "22:00",
+        "ResourceList": resource_batch
+    }]
+
+    payload = {
+        "__RequestVerificationToken": token,
+        "bookingstatus": "Available",
+        "parameter": json.dumps(parameter),
+        "_rsrcCat": "facilities"
+    }
+    print(f"Start: {time.time():.2f}")
+    async with session.post(GET_ALL_ROOMS_URL, data=payload) as resp:
+        resp.raise_for_status()
+        html = await resp.text()
+    print(f"End: {time.time():.2f}")
+    results = {}
+
+    blocks = re.findall(
+        r'<div class="card fa-sm">[\s\S]*?(?=<div class="card fa-sm">|$)',
+        html
+    )
+
+    for block in blocks:
+        name_match = re.search(
+            r'<span class="d-block d-md-none font-weight-bold">Name:</span>\s*([A-Z0-9\-]+)',
+            block
+        )
+        if not name_match:
+            continue
+
+        room = name_match.group(1)
+        slots = re.findall(
+            r"data-sltid=([a-f0-9\-]+)[\s\S]*?>\s*(\d{2}:\d{2}-\d{2}:\d{2})",
+            block
         )
 
-        for block in room_blocks:
-            name_match = re.search(
-                r'<span class="d-block d-md-none font-weight-bold">Name:</span>\s*([A-Z0-9\-]+)',
-                block
+        if slots:
+            results[room] = [
+                {
+                    "slot_id": s[0],
+                    "time": s[1],
+                    "rsrc_id": mapping[room],
+                    "rsrc_typ_id": ls_dict[0]["RSRC_TYP_ID"]
+                } for s in slots
+            ]
+
+    return results
+
+
+async def check_availability_async(token, requests_session):
+    """
+    Asynchronously check room availability and display available slots.
+
+    :param token: Verification token string
+    :param requests_session: Active session object
+    """
+    resource_list = [{
+        "RSRC_ID": d["RSRC_ID"],
+        "IS_SLD": False,
+        "Event_Type": 0,
+        "Disclaimer": "Sample layout"
+    } for d in ls_dict]
+
+    with open("mapping.json", "r", encoding="utf-8") as f:
+        mapping = json.load(f)
+
+    jar = aiohttp.CookieJar()
+    for c in requests_session.cookies:
+        jar.update_cookies({c.name: c.value})
+
+    connector = aiohttp.TCPConnector(limit_per_host=10, limit=6)
+    async with aiohttp.ClientSession(
+        headers=headers,
+        cookie_jar=jar,
+        connector=connector
+    ) as session:
+        tasks = []
+        for i in range(0, len(resource_list), 9):
+            batch = resource_list[i:i + 9]
+            tasks.append(
+                asyncio.create_task(fetch_availability_batch(session, token, batch, mapping))
             )
 
-            if not name_match:
-                continue
+        results = await asyncio.gather(*tasks)
 
-            name = name_match.group(1)
+    for batch in results:
+        for room, slots in batch.items():
+            available_slots[room] = slots
+            print(f"\nAvailable slots for room {room}:")
+            for i, slot in enumerate(slots):
+                print(f"  [{i}] {slot['time']}")
 
-            slots = re.findall(
-                r"data-sltid=([a-f0-9\-]+)[\s\S]*?class='time-slot-white[\s\S]*?>\s*(\d{2}:\d{2}-\d{2}:\d{2})",
-                block
-            )
-
-            rooms.append({
-                name: slots
-            })
-
-        for room in rooms:
-            #displays room with available slots and store into available_slots dict
-            for room_name, slots in room.items():
-                if slots:
-                    available_slots[room_name] = []
-                    for slot in slots:
-                        available_slots[room_name].append({
-                            "slot_id": slot[0],
-                            "time": slot[1],
-                            "rsrc_id": mapping[room_name],
-                            "rsrc_typ_id": ls_dict[0]["RSRC_TYP_ID"]
-                        })
-                    print(f"\nAvailable slots for room {room_name}:")
-                    for i, slot in enumerate(available_slots[room_name]):
-                        print(f"  [{i}] {slot['time']}")
-
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        print(f"An error occurred: {e}")
 
 def map_rooms(rooms: list[dict[str, str]]) -> None:
     """
@@ -303,7 +306,8 @@ def map_rooms(rooms: list[dict[str, str]]) -> None:
             "RSRC_TYP_ID": res['RSRC_TYP_ID']
         })
     with open("mapping.json", "w", encoding="utf-8") as f:
-        json.dump({res["RSRC_NAME"]: res["RSRC_ID"] for res in rooms}, f, indent=4)
+        json.dump({res["RSRC_NAME"]: res["RSRC_ID"]
+                  for res in rooms}, f, indent=4)
 
 
 def confirm_booking(room_name, slot_indices, token, session):
@@ -376,7 +380,8 @@ def confirm_booking(room_name, slot_indices, token, session):
                 print("Booking finalized successfully.")
                 sys.exit(0)
             else:
-                print(f"Failed to finalize booking. Status code: {response.status_code}")
+                print(
+                    f"Failed to finalize booking. Status code: {response.status_code}")
 
     except requests.exceptions.RequestException as e:
         print(f"Booking failed: {e}")
