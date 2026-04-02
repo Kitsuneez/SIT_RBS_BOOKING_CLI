@@ -7,9 +7,7 @@ import asyncio
 import json
 import os
 import re
-import shutil
 import sys
-from datetime import datetime
 import aiohttp
 import requests
 
@@ -51,53 +49,12 @@ available_slots: dict[str, list[dict[str, str]]] = {}
 ls_dict: list[dict[str, str]] = []
 room_mapping: dict[str, str] = {}
 
-SLOT_START = datetime.strptime("07:00", "%H:%M").time()
-SLOT_END = datetime.strptime("22:00", "%H:%M").time()
-
-
-def normalize_room_slots(slots: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Keep only 30-minute slots within 07:00-22:00, sorted by time."""
-    normalized: list[tuple[datetime, dict[str, str]]] = []
-    for slot in slots:
-        time_range = slot.get("time", "")
-        if not re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", time_range):
-            continue
-
-        start_s, end_s = time_range.split("-")
-        start_dt = datetime.strptime(start_s, "%H:%M")
-        end_dt = datetime.strptime(end_s, "%H:%M")
-
-        if (end_dt - start_dt).seconds != 30 * 60:
-            continue
-        if start_dt.time() < SLOT_START or end_dt.time() > SLOT_END:
-            continue
-        if start_dt.minute not in (0, 30) or end_dt.minute not in (0, 30):
-            continue
-
-        normalized.append((start_dt, slot))
-
-    normalized.sort(key=lambda item: item[0])
-    return [slot for _, slot in normalized]
-
 
 def get_rsrc_typ_id() -> str:
     """Return the active room type id for booking payloads."""
     if not ls_dict:
         return ""
     return str(ls_dict[0].get("RSRC_TYP_ID", ""))
-
-
-def check_session(session: requests.Session) -> bool:
-    """
-    Check if the current session is still valid.
-
-    :param session: Active session object
-    :type session: requests.Session
-    :return: True if session is expired, False otherwise
-    :rtype: bool
-    """
-    response = session.get(START_URL)
-    return bool(re.search("Your session may have expired", response.text))
 
 
 def get_credentials() -> tuple[str, str]:
@@ -330,7 +287,7 @@ async def fetch_availability_batch(session, token, resource_batch, mapping):
                 for s in slots
             ]
 
-    return results, 0.0
+    return results
 
 
 async def check_availability_async(session_pool: list[tuple[requests.Session, str]]):
@@ -390,9 +347,8 @@ async def check_availability_async(session_pool: list[tuple[requests.Session, st
 
     for batch in results:
         for room, slots in batch.items():
-            normalized = normalize_room_slots(slots)
-            if normalized:
-                available_slots[room] = normalized
+            if slots:
+                available_slots[room] = slots
 
 
     total_slots = sum(len(slots) for slots in available_slots.values())
@@ -421,22 +377,14 @@ def print_availability_table() -> None:
 
     room_w = max(len("Room"), *(len(room) for room, _, _ in rows))
     count_w = max(len("Slots"), *(len(str(count)) for _, count, _ in rows))
-    terminal_width = shutil.get_terminal_size((120, 20)).columns
-    max_avail_w = max(36, terminal_width - room_w - count_w - 10)
+    slots_per_row = 5
 
     wrapped_rows: list[tuple[str, str, list[str]]] = []
     for room, slot_count, entries in rows:
-        wrapped_lines: list[str] = []
-        current = ""
-        for entry in entries:
-            candidate = entry if not current else f"{current} | {entry}"
-            if len(candidate) <= max_avail_w:
-                current = candidate
-            else:
-                wrapped_lines.append(current)
-                current = entry
-        if current:
-            wrapped_lines.append(current)
+        wrapped_lines = [
+            " | ".join(entries[i : i + slots_per_row])
+            for i in range(0, len(entries), slots_per_row)
+        ]
         wrapped_rows.append((room, str(slot_count), wrapped_lines))
 
     avail_w = max(
