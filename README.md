@@ -7,6 +7,7 @@ PASSWORD = ""
 `python .`
 
 ## Example
+1. Change DATE = "" to desired date to book (LINE 25)
 1. run program and select first option
     ![alt text](images/image.png)
 2. choose room
