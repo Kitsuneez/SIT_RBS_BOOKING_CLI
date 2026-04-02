@@ -2,15 +2,14 @@
 Main module for SIT Room Booking System.
 Handles user authentication, room search, availability check, and booking.
 """
+
 import asyncio
 import json
 import os
-import random
 import re
+import shutil
 import sys
 from datetime import datetime
-from pathlib import Path
-from time import perf_counter
 import aiohttp
 import requests
 
@@ -22,21 +21,18 @@ class SessionExpiredError(Exception):
 
 
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
-CHECK_AVAILABILITY_URL = "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
+CHECK_AVAILABILITY_URL = (
+    "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
+)
 GET_ALL_ROOMS_URL = "https://rbs.singaporetech.edu.sg/MRB002/ResourceReload"
-DATE = "03 Apr 2026"
+DATE = "04 Apr 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
-MAX_ROOMS_PER_REQUEST = 10
-BATCH_SIZE = min(MAX_ROOMS_PER_REQUEST, max(1, 10))
+BATCH_SIZE = 10
 SESSION_POOL_SIZE = 4
-MAX_CONCURRENT_REQUESTS = 1
 REQUEST_TIMEOUT_SECONDS = 12
-MAX_BATCH_RETRIES = 2
-SHOW_AVAILABLE_SLOTS = False
-FAST_MODE = False
-ROOMS_CACHE_FILE = Path("rooms_cache.json")
+MAPPING_FILE = "mapping.json"
 
 
 headers = {
@@ -84,6 +80,13 @@ def normalize_room_slots(slots: list[dict[str, str]]) -> list[dict[str, str]]:
     return [slot for _, slot in normalized]
 
 
+def get_rsrc_typ_id() -> str:
+    """Return the active room type id for booking payloads."""
+    if not ls_dict:
+        return ""
+    return str(ls_dict[0].get("RSRC_TYP_ID", ""))
+
+
 def check_session(session: requests.Session) -> bool:
     """
     Check if the current session is still valid.
@@ -128,7 +131,7 @@ def fetch_rooms(session: requests.Session, token: str) -> list[dict[str, str]]:
         "BookingStatus": "Available",
         "Search": "",
         "ResourceType": "Discussion Room",
-        "LocationID": ""
+        "LocationID": "",
     }
 
     response = session.post(BOOKING_URL, data=payload)
@@ -138,31 +141,40 @@ def fetch_rooms(session: requests.Session, token: str) -> list[dict[str, str]]:
     return []
 
 
-def load_rooms_from_cache() -> list[dict[str, str]] | None:
-    """Load cached room metadata to avoid a slow room search request."""
-    if not ROOMS_CACHE_FILE.exists():
-        return None
+def load_room_mapping() -> None:
+    """Load room->resource id mapping from mapping.json into runtime structures."""
     try:
-        with ROOMS_CACHE_FILE.open("r", encoding="utf-8") as f:
-            rooms = json.load(f)
-        if isinstance(rooms, list) and rooms:
-            print(f"[*] Loaded cached room list from {ROOMS_CACHE_FILE}")
-            return rooms
+        with open(MAPPING_FILE, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return None
-    return None
+        print(f"[-] Failed to load valid room mapping from {MAPPING_FILE}")
+        sys.exit(1)
+
+    if not isinstance(loaded, dict) or not loaded:
+        print(f"[-] Room mapping in {MAPPING_FILE} is empty or invalid")
+        sys.exit(1)
+
+    room_mapping.update({str(room): str(rsrc_id) for room, rsrc_id in loaded.items()})
+
+    ls_dict.extend(
+        {"RSRC_ID": rsrc_id, "RSRC_TYP_ID": ""}
+        for rsrc_id in room_mapping.values()
+    )
 
 
-def save_rooms_cache(rooms: list[dict[str, str]]) -> None:
-    """Persist room metadata for faster subsequent runs."""
-    try:
-        with ROOMS_CACHE_FILE.open("w", encoding="utf-8") as f:
-            json.dump(rooms, f)
-    except OSError:
-        pass
+def hydrate_resource_type(rooms: list[dict[str, str]]) -> None:
+    """Populate RSRC_TYP_ID for booking payloads from fetched room metadata."""
+    typ_id = next((str(r.get("RSRC_TYP_ID", "")) for r in rooms if r.get("RSRC_TYP_ID")), "")
+    if not typ_id:
+        return
+
+    for item in ls_dict:
+        item["RSRC_TYP_ID"] = typ_id
 
 
-def create_new_session_with_token(username: str, password: str) -> tuple[requests.Session, str] | None:
+def create_new_session_with_token(
+    username: str, password: str
+) -> tuple[requests.Session, str] | None:
     """Create a fresh authenticated session and its verification token."""
     session = login(username, password)
     if not session:
@@ -187,6 +199,7 @@ async def build_session_pool() -> list[tuple[requests.Session, str]]:
 
     print(f"[*] Creating {SESSION_POOL_SIZE} fresh session(s)...")
     created = await asyncio.gather(*creation_tasks, return_exceptions=True)
+    print("sessions created")
     pool: list[tuple[requests.Session, str]] = []
     for item in created:
         if isinstance(item, BaseException) or item is None:
@@ -211,26 +224,19 @@ async def main_async():
     if not session_pool:
         sys.exit(1)
 
+    load_room_mapping()
+
     session, token = session_pool[0]
     print("[*] Session and tokens are ready for booking operations.")
     try:
-        rooms = load_rooms_from_cache() if FAST_MODE else None
-        if rooms is None:
-            rooms_start = perf_counter()
-            rooms = await asyncio.to_thread(fetch_rooms, session, token)
-            rooms_elapsed = perf_counter() - rooms_start
-            print(f"[*] Room search response time: {rooms_elapsed:.2f}s")
-            save_rooms_cache(rooms)
-        else:
-            print("[*] Room search response time: 0.00s (cache)")
+        rooms = await asyncio.to_thread(fetch_rooms, session, token)
+        hydrate_resource_type(rooms)
     except requests.exceptions.RequestException as e:
         print(f"An error occurred: {e}")
         return
     except json.JSONDecodeError as e:
         print(f"JSON decode error: {e}")
         return
-
-    map_rooms(rooms)
 
     await check_availability_async(session_pool)
     if available_slots:
@@ -251,13 +257,14 @@ def booking(token, session):
     room_name = input("Enter room name (E2-XX-XXX-DRXXX): ").strip().upper()
     slot_input = input(
         "Enter slot numbers to book (comma-separated, e.g., 0,1,2) \
-or ('-' for a range, e.g., 0-2): ").strip()
+or ('-' for a range, e.g., 0-2): "
+    ).strip()
     try:
-        if '-' in slot_input:
-            start, end = map(int, slot_input.split('-'))
+        if "-" in slot_input:
+            start, end = map(int, slot_input.split("-"))
             slot_indices = list(range(start, end + 1))
         else:
-            slot_indices = [int(x.strip()) for x in slot_input.split(',')]
+            slot_indices = [int(x.strip()) for x in slot_input.split(",")]
         confirm_booking(room_name, slot_indices, token, session)
     except ValueError:
         print("Invalid input. Please enter numbers separated by commas.")
@@ -273,53 +280,43 @@ async def fetch_availability_batch(session, token, resource_batch, mapping):
     :param mapping: Room name to RSRC_ID mapping dictionary
     :return: Dictionary of room names to available slots
     """
-    parameter = [{
-        "MRB002Date": DATE,
-        "MRB002StartTime": "07:00",
-        "MRB002EndTime": "22:00",
-        "ResourceList": resource_batch
-    }]
+    parameter = [
+        {
+            "MRB002Date": DATE,
+            "MRB002StartTime": "07:00",
+            "MRB002EndTime": "22:00",
+            "ResourceList": resource_batch,
+        }
+    ]
 
     payload = {
         "__RequestVerificationToken": token,
         "bookingstatus": "Available",
         "parameter": json.dumps(parameter),
-        "_rsrcCat": "facilities"
+        "_rsrcCat": "facilities",
     }
     timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
-    batch_start = perf_counter()
     html = ""
-    for attempt in range(MAX_BATCH_RETRIES + 1):
-        try:
-            async with session.post(GET_ALL_ROOMS_URL, data=payload, timeout=timeout) as resp:
-                resp.raise_for_status()
-                html = await resp.text()
-            break
-        except (asyncio.TimeoutError, aiohttp.ClientError):
-            if attempt >= MAX_BATCH_RETRIES:
-                raise
-            # Backoff + jitter reduces synchronized retry storms against the same endpoint.
-            await asyncio.sleep((0.35 * (2 ** attempt)) + random.uniform(0.05, 0.20))
-    batch_elapsed = perf_counter() - batch_start
+    async with session.post(GET_ALL_ROOMS_URL, data=payload, timeout=timeout) as resp:
+        resp.raise_for_status()
+        html = await resp.text()
     results = {}
 
     blocks = re.findall(
-        r'<div class="card fa-sm">[\s\S]*?(?=<div class="card fa-sm">|$)',
-        html
+        r'<div class="card fa-sm">[\s\S]*?(?=<div class="card fa-sm">|$)', html
     )
 
     for block in blocks:
         name_match = re.search(
             r'<span class="d-block d-md-none font-weight-bold">Name:</span>\s*([A-Z0-9\-]+)',
-            block
+            block,
         )
         if not name_match:
             continue
 
         room = name_match.group(1)
         slots = re.findall(
-            r"data-sltid=([a-f0-9\-]+)[\s\S]*?>\s*(\d{2}:\d{2}-\d{2}:\d{2})",
-            block
+            r"data-sltid=([a-f0-9\-]+)[\s\S]*?>\s*(\d{2}:\d{2}-\d{2}:\d{2})", block
         )
 
         if slots:
@@ -328,11 +325,12 @@ async def fetch_availability_batch(session, token, resource_batch, mapping):
                     "slot_id": s[0],
                     "time": s[1],
                     "rsrc_id": mapping[room],
-                    "rsrc_typ_id": ls_dict[0]["RSRC_TYP_ID"]
-                } for s in slots
+                    "rsrc_typ_id": get_rsrc_typ_id(),
+                }
+                for s in slots
             ]
 
-    return results, batch_elapsed
+    return results, 0.0
 
 
 async def check_availability_async(session_pool: list[tuple[requests.Session, str]]):
@@ -342,14 +340,16 @@ async def check_availability_async(session_pool: list[tuple[requests.Session, st
     :param token: Verification token string
     :param requests_session: Active session object
     """
-    resource_list = [{
-        "RSRC_ID": d["RSRC_ID"],
-        "IS_SLD": False,
-        "Event_Type": 0,
-        "Disclaimer": "Sample layout"
-    } for d in ls_dict]
+    resource_list = [
+        {
+            "RSRC_ID": d["RSRC_ID"],
+            "IS_SLD": False,
+            "Event_Type": 0,
+            "Disclaimer": "Sample layout",
+        }
+        for d in ls_dict
+    ]
 
-    availability_start = perf_counter()
     aiohttp_sessions: list[tuple[aiohttp.ClientSession, str]] = []
     results = []
     try:
@@ -358,52 +358,42 @@ async def check_availability_async(session_pool: list[tuple[requests.Session, st
             for c in requests_session.cookies:
                 if c.value is not None:
                     jar.update_cookies({c.name: c.value})
-            connector = aiohttp.TCPConnector(limit_per_host=MAX_CONCURRENT_REQUESTS, limit=MAX_CONCURRENT_REQUESTS)
-            aiohttp_sessions.append((
-                aiohttp.ClientSession(
-                    headers=headers,
-                    cookie_jar=jar,
-                    connector=connector
-                ),
-                token
-            ))
+            connector = aiohttp.TCPConnector()
+            aiohttp_sessions.append(
+                (
+                    aiohttp.ClientSession(
+                        headers=headers, cookie_jar=jar, connector=connector
+                    ),
+                    token,
+                )
+            )
 
         tasks = []
-        effective_batch_size = min(MAX_ROOMS_PER_REQUEST, BATCH_SIZE)
-        for batch_index, i in enumerate(range(0, len(resource_list), effective_batch_size)):
-            batch = resource_list[i:i + effective_batch_size]
+        for batch_index, i in enumerate(range(0, len(resource_list), BATCH_SIZE)):
+            batch = resource_list[i : i + BATCH_SIZE]
             session_index = batch_index % len(aiohttp_sessions)
             aio_session, session_token = aiohttp_sessions[session_index]
             tasks.append(
                 asyncio.create_task(
-                    fetch_availability_batch(aio_session, session_token, batch, room_mapping)
+                    fetch_availability_batch(
+                        aio_session, session_token, batch, room_mapping
+                    )
                 )
             )
 
-        available_slots.clear()
+        # available_slots.clear()
         results = await asyncio.gather(*tasks)
     finally:
-        await asyncio.gather(*(s.close() for s, _ in aiohttp_sessions), return_exceptions=True)
-    availability_elapsed = perf_counter() - availability_start
+        await asyncio.gather(
+            *(s.close() for s, _ in aiohttp_sessions), return_exceptions=True
+        )
 
-    batch_timings: list[float] = []
-    for batch, batch_elapsed in results:
-        batch_timings.append(batch_elapsed)
+    for batch in results:
         for room, slots in batch.items():
             normalized = normalize_room_slots(slots)
             if normalized:
                 available_slots[room] = normalized
 
-    print(
-        f"[*] Availability request time: {availability_elapsed:.2f}s "
-        f"({len(results)} batch request(s), batch_size={effective_batch_size}, "
-        f"concurrency={MAX_CONCURRENT_REQUESTS}, sessions={len(session_pool)})"
-    )
-    if batch_timings:
-        print(
-            f"[*] Batch response times (s): min={min(batch_timings):.2f}, "
-            f"max={max(batch_timings):.2f}, avg={sum(batch_timings)/len(batch_timings):.2f}"
-        )
 
     total_slots = sum(len(slots) for slots in available_slots.values())
     print(
@@ -419,25 +409,38 @@ def print_availability_table() -> None:
         print("\nNo room availability to display.")
         return
 
-    slots_per_line = 4
-    rows: list[tuple[str, str, list[str]]] = []
+    rows: list[tuple[str, int, list[str]]] = []
     for room in sorted(available_slots.keys()):
         slots = available_slots[room]
-        slot_count = str(len(slots))
-        slot_entries = [f"[{i}] {slot['time'].replace(':', '')}" for i, slot in enumerate(slots)]
-        wrapped_lines = [
-            " | ".join(slot_entries[i:i + slots_per_line])
-            for i in range(0, len(slot_entries), slots_per_line)
+        slot_entries = [
+            f"[{i}] {slot['time'].replace(':', '')}" for i, slot in enumerate(slots)
         ]
-        rows.append((room, slot_count, wrapped_lines))
+        rows.append((room, len(slots), slot_entries))
 
-    rows.sort(key=lambda row: (-int(row[1]), row[0]))
+    rows.sort(key=lambda row: (row[1], row[0]), reverse=True)
 
-    room_w = max(len("Room"), *(len(r[0]) for r in rows))
-    count_w = max(len("Slots"), *(len(r[1]) for r in rows))
+    room_w = max(len("Room"), *(len(room) for room, _, _ in rows))
+    count_w = max(len("Slots"), *(len(str(count)) for _, count, _ in rows))
+    terminal_width = shutil.get_terminal_size((120, 20)).columns
+    max_avail_w = max(36, terminal_width - room_w - count_w - 10)
+
+    wrapped_rows: list[tuple[str, str, list[str]]] = []
+    for room, slot_count, entries in rows:
+        wrapped_lines: list[str] = []
+        current = ""
+        for entry in entries:
+            candidate = entry if not current else f"{current} | {entry}"
+            if len(candidate) <= max_avail_w:
+                current = candidate
+            else:
+                wrapped_lines.append(current)
+                current = entry
+        if current:
+            wrapped_lines.append(current)
+        wrapped_rows.append((room, str(slot_count), wrapped_lines))
+
     avail_w = max(
-        len("Availability"),
-        *(len(line) for _, _, lines in rows for line in lines)
+        len("Availability"), *(len(line) for _, _, lines in wrapped_rows for line in lines)
     )
 
     sep = f"+-{'-' * room_w}-+-{'-' * count_w}-+-{'-' * avail_w}-+"
@@ -447,35 +450,12 @@ def print_availability_table() -> None:
     print(sep)
     print(header)
     print(sep)
-    for room, slot_count, wrapped_lines in rows:
+    for room, slot_count, wrapped_lines in wrapped_rows:
         for i, line in enumerate(wrapped_lines):
             room_cell = room if i == 0 else ""
             count_cell = slot_count if i == 0 else ""
-            print(
-                f"| {room_cell.ljust(room_w)} | {count_cell.ljust(count_w)} | {line.ljust(avail_w)} |"
-            )
+            print(f"| {room_cell.ljust(room_w)} | {count_cell.ljust(count_w)} | {line.ljust(avail_w)} |")
         print(sep)
-
-
-def map_rooms(rooms: list[dict[str, str]]) -> None:
-    """
-    Display available rooms in a formatted table.
-
-    :param rooms: List of room dictionaries
-    """
-    ls_dict.clear()
-    room_mapping.clear()
-
-    for _, res in enumerate(rooms):
-        ls_dict.append({
-            "RSRC_ID": res['RSRC_ID'],
-            "RSRC_TYP_ID": res['RSRC_TYP_ID']
-        })
-        room_mapping[res["RSRC_NAME"]] = res["RSRC_ID"]
-
-    with open("mapping.json", "w", encoding="utf-8") as f:
-        json.dump(room_mapping, f, indent=4)
-
 
 def confirm_booking(room_name, slot_indices, token, session):
     """
@@ -490,15 +470,17 @@ def confirm_booking(room_name, slot_indices, token, session):
     for i, idx in enumerate(slot_indices):
         if idx < len(available_slots[room_name]):
             slot = available_slots[room_name][idx]
-            slot_list.append({
-                "SRNO": i + 1,
-                "SLT_ID": slot['slot_id'],
-                "SLT_Time": slot['time'].split('-')[0],  # Get start time
-                "SLT_Desc": slot['time'],
-                "encryptedSlotStatus": None,
-                "SLT_STATUS": 1,
-                "encryptedSLT_Time": None
-            })
+            slot_list.append(
+                {
+                    "SRNO": i + 1,
+                    "SLT_ID": slot["slot_id"],
+                    "SLT_Time": slot["time"].split("-")[0],  # Get start time
+                    "SLT_Desc": slot["time"],
+                    "encryptedSlotStatus": None,
+                    "SLT_STATUS": 1,
+                    "encryptedSLT_Time": None,
+                }
+            )
 
     if not slot_list:
         print("Invalid slot selection")
@@ -508,7 +490,7 @@ def confirm_booking(room_name, slot_indices, token, session):
     booking_payload = {
         "__RequestVerificationToken": token,
         "RSRC_ID": first_slot,
-        "RSRC_TYP_ID": ls_dict[0]["RSRC_TYP_ID"],
+        "RSRC_TYP_ID": get_rsrc_typ_id(),
         "SearchDate": DATE,
         "SlotList": json.dumps(slot_list),
         "APPRV_EXEMP": "false",
@@ -516,7 +498,7 @@ def confirm_booking(room_name, slot_indices, token, session):
         "checkReorNot": "0",
         "IS_IN4SIT": "false",
         "IS_SUPT": "false",
-        "IS_APPRVL": "false"
+        "IS_APPRVL": "false",
     }
 
     try:
@@ -532,14 +514,14 @@ def confirm_booking(room_name, slot_indices, token, session):
             print("[*] Finalizing booking...")
             payload = {
                 "__RequestVerificationToken": token,
-                "RSRC_TYP_ID": first_slot,
+                "RSRC_TYP_ID": get_rsrc_typ_id(),
                 "NUM_ATTND": "1",
                 "Event_TypeText": "",
                 "Acad_Text": "",
                 "Purpose": "Study",
                 "supptList": "[]",
                 "OVERWRITE": "0",
-                "slcPurpose": ""
+                "slcPurpose": "",
             }
             response = session.post(FINALIZE_URL, data=payload)
             response.raise_for_status()
@@ -548,7 +530,8 @@ def confirm_booking(room_name, slot_indices, token, session):
                 sys.exit(0)
             else:
                 print(
-                    f"Failed to finalize booking. Status code: {response.status_code}")
+                    f"Failed to finalize booking. Status code: {response.status_code}"
+                )
 
     except requests.exceptions.RequestException as e:
         print(f"Booking failed: {e}")

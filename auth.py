@@ -1,12 +1,10 @@
 """
 Authentication module for handling login and session management.
 """
-import os
 import html
 import re
 import sys
 from urllib.parse import urlparse
-import pickle
 import requests
 from dotenv import load_dotenv
 
@@ -119,13 +117,11 @@ def get_login_page(session: requests.Session) -> str | None:
     :return: URL of the ADFS login page
     """
     session.headers.update(HEADERS)
-    print("[*] Attempting to get login page...")
     response = session.get(START_URL)
     if "Sign In" not in response.text and "adfs/ls" not in response.url:
         print("[*] Failed to get login page")
         return None
     adfs_url = response.url
-    print("[*] Submitting login form...")
     return adfs_url
 
 
@@ -148,26 +144,4 @@ def get_verification_tokens(session: requests.Session) -> str | None:
         print("[-] Verification token not found on booking page.")
         return None
     token = token_match.group(1)
-    print("[*] Verification token extracted.")
     return token
-
-
-def main():
-    """
-    Main function to handle authentication and token retrieval.
-    """
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
-    if username is None or password is None:
-        print("[-] USERNAME or PASSWORD environment variables not set.")
-        sys.exit(1)
-    session = login(username, password)
-    if not session:
-        print("[-] Could not establish a session.")
-        sys.exit(1)
-    with open("auth_session.pkl", "wb") as f:
-        pickle.dump(session, f)
-
-
-if __name__ == "__main__":
-    main()
