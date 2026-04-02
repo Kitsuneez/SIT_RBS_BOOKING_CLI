@@ -18,12 +18,12 @@ class SessionExpiredError(Exception):
     """Raised when the authentication session has expired."""
 
 
+DATE = "04 Apr 2026"
 BOOKING_URL = "https://rbs.singaporetech.edu.sg/SRB001/SearchSRB001List"
 CHECK_AVAILABILITY_URL = (
     "https://rbs.singaporetech.edu.sg/SRB001/GetTimeSlotListByresidNdatetime"
 )
 GET_ALL_ROOMS_URL = "https://rbs.singaporetech.edu.sg/MRB002/ResourceReload"
-DATE = "04 Apr 2026"
 CONFIRM_URL = "https://rbs.singaporetech.edu.sg/SRB001/NormalBookingConfirmation"
 FINALIZE_URL = "https://rbs.singaporetech.edu.sg/SRB001/BookingSaving"
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
@@ -188,6 +188,9 @@ async def main_async():
     try:
         rooms = await asyncio.to_thread(fetch_rooms, session, token)
         hydrate_resource_type(rooms)
+        if not get_rsrc_typ_id():
+            print("[-] Failed to determine resource type ID from room metadata.")
+            sys.exit(1)
     except requests.exceptions.RequestException as e:
         print(f"An error occurred: {e}")
         return
@@ -338,8 +341,13 @@ async def check_availability_async(session_pool: list[tuple[requests.Session, st
                 )
             )
 
-        # available_slots.clear()
-        results = await asyncio.gather(*tasks)
+        gathered = await asyncio.gather(*tasks, return_exceptions=True)
+        results = []
+        for result in gathered:
+            if isinstance(result, BaseException):
+                print(f"[!] Availability check error: {result}")
+                continue
+            results.append(result)
     finally:
         await asyncio.gather(
             *(s.close() for s, _ in aiohttp_sessions), return_exceptions=True
