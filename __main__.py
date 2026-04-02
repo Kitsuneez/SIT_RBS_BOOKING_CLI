@@ -422,26 +422,27 @@ def confirm_booking(room_name, slot_indices, token, session):
         print("No slots available. Check availability first.")
         return
     # Build the slot list for booking
+    room_slots = available_slots.get(room_name)
+    if not room_slots:
+        print(f"No available slots found for room {room_name}.")
+        return
+    if not slot_indices or any(idx < 0 or idx >= len(room_slots) for idx in slot_indices):
+        print("Invalid slot selection. Please choose valid slot numbers.")
+        return
+    
     slot_list = []
     for i, idx in enumerate(slot_indices):
-        if idx < len(available_slots[room_name]):
-            slot = available_slots[room_name][idx]
-            slot_list.append(
-                {
-                    "SRNO": i + 1,
-                    "SLT_ID": slot["slot_id"],
-                    "SLT_Time": slot["time"].split("-")[0],  # Get start time
-                    "SLT_Desc": slot["time"],
-                    "encryptedSlotStatus": None,
-                    "SLT_STATUS": 1,
-                    "encryptedSLT_Time": None,
-                }
-            )
-
-    if not slot_list:
-        print("Invalid slot selection")
-        return
-    first_slot = available_slots[room_name][slot_indices[0]]["rsrc_id"]
+        slot_info = room_slots[idx]
+        slot_list.append({
+            "SRNO": i+1,
+            "SLT_ID": slot_info["slot_id"],
+            "SLT_TIME": slot_info["time"].split("-")[0],
+            "SLT_Desc": slot_info["time"],
+            "encryptedSlotStatus": None,
+            "SLT_STATUS": 1,
+            "encryptedSLT_Time": None,
+        })
+    first_slot = room_slots[slot_indices[0]]["rsrc_id"]
 
     booking_payload = {
         "__RequestVerificationToken": token,
