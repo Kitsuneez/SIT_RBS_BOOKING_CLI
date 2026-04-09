@@ -1,18 +1,21 @@
 ## Setup environment
 `pip install -r requirements.txt`
-## Add username and password for login into .env
+## Add username and password for login into `.env`
 USERNAME = ""<br>
 PASSWORD = ""
 ## To run script
 `python .`
 
 ## Example
-1. Change DATE = "" to desired date to book (LINE 25)
-1. run program and select first option
-    ![alt text](images/image.png)
-2. choose room
-    ![alt text](images/image1.png)
-3. confirm room (y is default, press enter if yes)
-    ![alt text](images/image3.png)
-4. select time slot (',' for different slots, '-' for range)
-    ![alt text](images/image4.png)
+1. Set `DATE`, `DEFAULT_SLOT_START_TIME`, and `DEFAULT_SLOT_END_TIME` in `constants.py` to your desired booking date and time
+2. run program and program will login using your credentials and fetch rooms
+![alt text](fetch.png)
+3. navigate through the pages using n and p, enter the room number to select the room
+![alt text](slots.png)
+4. Select time slots to confirm booking
+![alt text](image.png)
+5. The system will confirm the booking when it is successful
+![alt text](confirmation.png)
+
+
+Mapping.json is used to map room names to their corresponding resource IDs for system queries. This enables the application to retrieve room information from the booking system. Resource IDs are extracted from the mapping and used to fetch availability and booking details.
