@@ -1,7 +1,5 @@
 ## Demo
-<video src="images/demo.webm" controls="controls" style="max-width: 100%;">
-  Your browser does not support the video tag.
-</video>
+![demo video](images/demo.gif)
 
 ## Setup environment
 `pip install -r requirements.txt`
@@ -25,4 +23,4 @@ PASSWORD = ""
 
 *Note: You can only select timeslots using commas OR a range using a dash. For example, "0,2,4" or "0-2". You cannot mix both formats in the same input.
 
-Mapping.json is used to map room names to their corresponding resource IDs for system queries. This enables the application to retrieve room information from the booking system. Resource IDs are extracted from the mapping and used to fetch availability and booking details.
+Confirmation of booking may take a while, so please be patient after confirming the booking. If you encounter a timeout error, please try again as it may be due to network issues or server response time.
