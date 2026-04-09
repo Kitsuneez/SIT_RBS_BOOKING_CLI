@@ -102,21 +102,56 @@ class Booking:
         else:
             room_name = room_name.strip().upper()
             print(f"{CYAN}[*] Selected room from HUD:{RESET} {MAGENTA}{room_name}{RESET}")
-        slot_input = input(
-            f"{BOLD}Enter slot numbers to book{RESET} (comma-separated, e.g., 0,1,2) \
+
+        room_slots = self.slots.get(room_name, [])
+        if not room_slots:
+            print(f"{RED}Room '{room_name}' not found or has no available slots.{RESET}")
+            return
+
+        max_slot_index = len(room_slots) - 1
+        while True:
+            slot_input = input(
+                f"{BOLD}Enter slot numbers to book{RESET} (comma-separated, e.g., 0,1,2) \
     or ('-' for a range, e.g., 0-2): "
-        ).strip()
-        try:
-            if "-" in slot_input:
-                start, end = map(int, slot_input.split("-"))
-                slot_indices = list(range(start, end + 1))
-            else:
-                slot_indices = [int(x.strip()) for x in slot_input.split(",")]
-            self._confirm_booking(room_name, slot_indices, token, session)
-        except ValueError:
-            print(
-                f"{RED}Invalid slot input format.{RESET} Please enter numbers separated by commas or a range with '-'."
-            )
+            ).strip()
+
+            try:
+                if "-" in slot_input:
+                    parts = [p.strip() for p in slot_input.split("-")]
+                    if len(parts) != 2 or not parts[0] or not parts[1]:
+                        print(f"{RED}Invalid range format.{RESET} Please enter in 'start-end' format.")
+                        continue
+                    start, end = map(int, slot_input.split("-"))
+                    if start > end:
+                        print(
+                            f"{RED}Invalid range.{RESET} Start index cannot be greater than end index."
+                        )
+                        continue
+                    if start < 0 or end > max_slot_index or start > max_slot_index:
+                        print(
+                            f"{RED}Invalid slot index in range.{RESET} Enter values between 0 and {max_slot_index}."
+                        )
+                        continue
+                    slot_indices = list(range(start, end + 1))
+                else:
+                    slot_indices = [int(x.strip()) for x in slot_input.split(",") if x.strip()]
+
+                if not slot_indices:
+                    print(f"{RED}No slot indices provided.{RESET}")
+                    continue
+
+                if any(i < 0 or i > max_slot_index for i in slot_indices):
+                    print(
+                        f"{RED}Invalid slot index.{RESET} Enter values between 0 and {max_slot_index}."
+                    )
+                    continue
+
+                self._confirm_booking(room_name, slot_indices, token, session)
+                break
+            except ValueError:
+                print(
+                    f"{RED}Invalid slot input format.{RESET} Please enter numbers separated by commas or a range with '-'."
+                )
 
     def _confirm_booking(
         self,
