@@ -7,9 +7,9 @@ PASSWORD = ""
 `python .`
 
 ## Example
-1. Change DATE = "" to desired date to book (LINE 21)
+1. Change DATE and time in constants.py (line 1) to desired booking date and time
 2. run program and choose room
-    ![alt text](image1.png)
+    
 3. select time slot (',' for different slots, '-' for range)
     ![alt text](images/image4.png)
 

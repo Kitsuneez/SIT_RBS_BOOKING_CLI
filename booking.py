@@ -86,13 +86,19 @@ class Booking:
         print(f"{CYAN}[*] Checking availability{RESET}")
         await self._check_availability()
 
-    def book(self):
+    def book(self, room_name: str | None = None):
         """
         prompts the user to select a room and time slots,
         then attempts to make a booking using one of the authenticated sessions from the pool.
         """
         session, token = self.session_pool[0]
-        room_name = input(f"{BOLD}Enter room name{RESET} (E2-XX-XXX-DRXXX): ").strip().upper()
+        if room_name is None:
+            room_name = input(
+                f"{BOLD}Enter room name{RESET} (E2-XX-XXX-DRXXX): "
+            ).strip().upper()
+        else:
+            room_name = room_name.strip().upper()
+            print(f"{CYAN}[*] Selected room from HUD:{RESET} {MAGENTA}{room_name}{RESET}")
         slot_input = input(
             f"{BOLD}Enter slot numbers to book{RESET} (comma-separated, e.g., 0,1,2) \
     or ('-' for a range, e.g., 0-2): "

@@ -23,10 +23,14 @@ RED = "\033[31m"
 
 
 def display_timeslots(slots):
-    """Display rooms and timeslots in a paginated terminal HUD."""
+    """Display rooms and timeslots in a paginated terminal HUD.
+
+    Returns:
+        Selected room name when user chooses via HUD index, otherwise None.
+    """
     if not slots:
         print(f"{YELLOW}{BOLD}No slots available.{RESET}")
-        return
+        return None
 
     rooms = sorted(slots.items())
     total_pages = math.ceil(len(rooms) / ROOMS_PER_PAGE)
@@ -40,8 +44,12 @@ def display_timeslots(slots):
         print(f"{BLUE}{BOLD}Slots HUD{RESET} {DIM}- page {page + 1}/{total_pages}{RESET}")
         print(f"{BLUE}{'=' * 92}{RESET}")
 
-        for room_name, room_slots in page_rooms:
-            print(f"\n{MAGENTA}{BOLD}{room_name}{RESET} {DIM}({len(room_slots)} slots){RESET}")
+        for room_offset, (room_name, room_slots) in enumerate(page_rooms):
+            room_index = start + room_offset
+            print(
+                f"\n{MAGENTA}{BOLD}[{room_index:02d}] {room_name}{RESET} "
+                f"{DIM}({len(room_slots)} slots){RESET}"
+            )
             if not room_slots:
                 print(f"  {RED}No available timeslots{RESET}")
                 continue
@@ -54,23 +62,32 @@ def display_timeslots(slots):
                 )
                 print(row_text)
 
-        if total_pages == 1:
-            break
-
         print(
-            f"\n{YELLOW}[n]{RESET} next page  \
-                {YELLOW}[p]{RESET} previous page  \
-                {YELLOW}[q]{RESET} quit"
+            f"\n{YELLOW}[n]{RESET} next page  "
+            f"{YELLOW}[p]{RESET} previous page  "
+            f"{YELLOW}[index]{RESET} book room  "
+            f"{YELLOW}[q]{RESET} quit"
         )
         command = input(f"{BOLD}HUD>{RESET} ").strip().lower()
         if command in {"q", "quit", "exit"}:
-            break
+            return None
+        if command.isdigit():
+            room_index = int(command)
+            if 0 <= room_index < len(rooms):
+                return rooms[room_index][0]
+            print(f"{RED}Invalid room index.{RESET} Use a number from the left label.")
+            continue
         if command in {"n", "next"} and page < total_pages - 1:
             page += 1
             continue
         if command in {"p", "prev", "previous"} and page > 0:
             page -= 1
             continue
+
+        if total_pages == 1:
+            print(f"{YELLOW}Use room index to select a room or q to quit.{RESET}")
+        else:
+            print(f"{YELLOW}Unknown command. Use n, p, room index, or q.{RESET}")
 
 
 async def main():
@@ -79,8 +96,8 @@ async def main():
     """
     booking = Booking()
     await booking.get_slots()
-    display_timeslots(booking.slots)
-    booking.book()
+    selected_room = display_timeslots(booking.slots)
+    booking.book(room_name=selected_room)
 
 
 if __name__ == "__main__":
