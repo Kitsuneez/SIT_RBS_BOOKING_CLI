@@ -1,5 +1,5 @@
 ## Demo
-<video controls autoplay loop width="400" src="images/demo.webm">
+<video src="images/demo.webm" controls>
   Your browser does not support the video tag.
 </video>
 
