@@ -1,5 +1,5 @@
 ## Demo
-<video src="images/demo.webm" controls>
+<video src="images/demo.webm" controls="controls" style="max-width: 100%;">
   Your browser does not support the video tag.
 </video>
 
