@@ -117,10 +117,19 @@ class Booking:
 
             try:
                 if "-" in slot_input:
+                    parts = [p.strip() for p in slot_input.split("-")]
+                    if len(parts) != 2 or not parts[0] or not parts[1]:
+                        print(f"{RED}Invalid range format.{RESET} Please enter in 'start-end' format.")
+                        continue
                     start, end = map(int, slot_input.split("-"))
                     if start > end:
                         print(
                             f"{RED}Invalid range.{RESET} Start index cannot be greater than end index."
+                        )
+                        continue
+                    if start < 0 or end > max_slot_index or start > max_slot_index:
+                        print(
+                            f"{RED}Invalid slot index in range.{RESET} Enter values between 0 and {max_slot_index}."
                         )
                         continue
                     slot_indices = list(range(start, end + 1))

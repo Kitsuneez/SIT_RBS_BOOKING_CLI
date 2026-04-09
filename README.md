@@ -18,6 +18,6 @@ PASSWORD = ""
 ![alt text](images/confirmation.png)
 
 
-*Note: You can only select timeslots using commas OR a range using a dash. For example, "1,3,5" or "1-3". You cannot mix both formats in the same input.
+*Note: You can only select timeslots using commas OR a range using a dash. For example, "0,2,4" or "0-2". You cannot mix both formats in the same input.
 
 Mapping.json is used to map room names to their corresponding resource IDs for system queries. This enables the application to retrieve room information from the booking system. Resource IDs are extracted from the mapping and used to fetch availability and booking details.
