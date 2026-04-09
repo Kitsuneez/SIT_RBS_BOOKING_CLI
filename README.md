@@ -1,5 +1,7 @@
 ## Demo
-![demo video](images/demo.webm)
+<video controls autoplay loop width="400" src="images/demo.webm">
+  Your browser does not support the video tag.
+</video>
 
 ## Setup environment
 `pip install -r requirements.txt`
