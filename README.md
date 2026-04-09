@@ -1,6 +1,3 @@
-## Demo
-![demo video](images/demo.gif)
-
 ## Setup environment
 `pip install -r requirements.txt`
 ## Add username and password for login into `.env`
@@ -8,6 +5,9 @@ USERNAME = ""<br>
 PASSWORD = ""
 ## To run script
 `python .`
+
+## Demo
+![demo video](images/demo.gif)
 
 ## Example
 1. Set `DATE`, `DEFAULT_SLOT_START_TIME`, and `DEFAULT_SLOT_END_TIME` in `constants.py` to your desired booking date and time
