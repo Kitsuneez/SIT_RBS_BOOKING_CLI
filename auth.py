@@ -14,6 +14,7 @@ from constants import (
     START_URL,
     WSFED_FORM_ACTION_REGEX,
     WSFED_HIDDEN_INPUT_REGEX,
+    REQUEST_TIMEOUT_SECONDS
 )
 from errors import LoginException
 
@@ -45,7 +46,9 @@ class Auth:
             info["action_url"],
             data=info["wsfed_payload"],
             headers=info["callback_headers"],
+            timeout=REQUEST_TIMEOUT_SECONDS
         )
+        final_response.raise_for_status()
         if final_response.status_code == 200:
             if "Sign In" in final_response.text or "adfs/ls" in final_response.url:
                 raise LoginException("Login loop detected. Back at login page.")
@@ -58,7 +61,8 @@ class Auth:
             "Kmsi": "true",
         }
         adfs_url = self._get_adfs_url()
-        login_response = self.session.post(adfs_url, data=payload)
+        login_response = self.session.post(adfs_url, data=payload, timeout=REQUEST_TIMEOUT_SECONDS)
+        login_response.raise_for_status()
         if "Incorrect user ID or password" in login_response.text:
             raise LoginException("Incorrect user ID or password.")
         action_url, wsfed_payload = self._extract_wsfed_payload(login_response)
@@ -78,13 +82,14 @@ class Auth:
 
     def _get_adfs_url(self) -> str:
         self.session.headers.update(HEADERS)
-        response = self.session.get(START_URL)
+        response = self.session.get(START_URL, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
         if "Sign In" not in response.text and "adfs/ls" not in response.url:
             raise LoginException("ADFS URL not found on initial login page.")
         return response.url
 
     def _get_verification_token(self) -> None:
-        response = self.session.get(START_URL)
+        response = self.session.get(START_URL, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
 
         token_match = re.search(REQUEST_VERIFICATION_TOKEN_REGEX, response.text)

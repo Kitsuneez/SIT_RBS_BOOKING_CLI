@@ -97,6 +97,9 @@ async def main():
     booking = Booking()
     await booking.get_slots()
     selected_room = display_timeslots(booking.slots)
+    if not selected_room:
+        print(f"{YELLOW}No room selected. Exiting.{RESET}")
+        return
     booking.book(room_name=selected_room)
 
 

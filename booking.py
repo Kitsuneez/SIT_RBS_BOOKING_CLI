@@ -4,6 +4,7 @@ from asyncio import gather, to_thread, create_task
 import json
 import re
 import os
+from typing import TypeAlias
 import requests
 import aiohttp
 from auth import Auth
@@ -38,10 +39,10 @@ from constants import (
 )
 from errors import BookingException
 
-USERNAME = TypeAlias = str
-PASSWORD = TypeAlias = str
-MAPPING = dict[str, str]
-SESSIONPOOL = TypeAlias = list[tuple[requests.Session, str]]
+USERNAME: TypeAlias = str
+PASSWORD: TypeAlias = str
+MAPPING: TypeAlias = dict[str, str]
+SESSIONPOOL: TypeAlias = list[tuple[requests.Session, str]]
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -81,6 +82,8 @@ class Booking:
             rooms = await to_thread(self._fetch_rooms, session, token)
             print(f"{CYAN}[*] Hydrating resource types{RESET}")
             self._hydrate_resource_type(rooms)
+            if not self.rsrc_list or not self.rsrc_list[0].get("RSRC_TYP_ID"):
+                raise BookingException("Could not determine RSRC_TYP_ID from fetched room metadata.")
         except requests.RequestException as e:
             raise BookingException(f"Failed to fetch rooms: {e}") from e
         print(f"{CYAN}[*] Checking availability{RESET}")
@@ -136,6 +139,10 @@ class Booking:
             print(f"{RED}Room '{room_name}' not found or has no available slots.{RESET}")
             return
         room_slots = self.slots.get(room_name, [])
+        if not slot_indices or any(i < 0 or i >= len(room_slots) for i in slot_indices):
+            print(f"{RED}Invalid slot indices.{RESET}")
+            return
+
         slot_list = []
         for i, idx in enumerate(slot_indices):
             slot_info = room_slots[idx]
@@ -165,7 +172,7 @@ class Booking:
             "IS_APPRVL": CONFIRMATION_IS_APPRVL,
         }
         try:
-            response = session.post(CONFIRM_URL, data=booking_payload)
+            response = session.post(CONFIRM_URL, data=booking_payload, timeout=REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
             if response.status_code == 200:
                 print(f"{CYAN}[*] Finalizing booking...{RESET}")
@@ -180,7 +187,7 @@ class Booking:
                     "OVERWRITE": FINALIZE_OVERWRITE,
                     "slcPurpose": "",
                 }
-                response = session.post(FINALIZE_URL, data=payload)
+                response = session.post(FINALIZE_URL, data=payload, timeout=REQUEST_TIMEOUT_SECONDS)
                 response.raise_for_status()
                 if response.status_code != 200:
                     raise BookingException(
@@ -230,7 +237,13 @@ class Booking:
                 tasks.append(
                     create_task(self._check_availability_batch(session, token, batch))
                 )
-            results = await gather(*tasks)
+            gathered = await gather(*tasks, return_exceptions=True)
+            results = []
+            for r in gathered:
+                if isinstance(r, BaseException):
+                    print(f"{YELLOW}[*] Availability batch failed: {r}{RESET}")
+                    continue
+                results.append(r)
         finally:
             await gather(*(s.close() for s, _ in aiohttp_sessions))
         for batch in results:
@@ -371,7 +384,7 @@ class Booking:
             "LocationID": "",
         }
 
-        response = session.post(BOOKING_URL, data=payload)
+        response = session.post(BOOKING_URL, data=payload, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json()
 
