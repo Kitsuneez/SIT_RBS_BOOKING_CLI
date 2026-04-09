@@ -1,4 +1,4 @@
-## Setup environment
+## Setup Guide
 1. `pip install -r requirements.txt`
 2. Add username and password for login into `.env`
     ```
