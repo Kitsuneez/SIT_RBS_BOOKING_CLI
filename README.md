@@ -7,10 +7,15 @@ PASSWORD = ""
 `python .`
 
 ## Example
-1. Change DATE and time in constants.py (line 1) to desired booking date and time
-2. run program and choose room
-    
-3. select time slot (',' for different slots, '-' for range)
-    ![alt text](images/image4.png)
+1. Set `DATE`, `DEFAULT_SLOT_START_TIME`, and `DEFAULT_SLOT_END_TIME` in `constants.py` to your desired booking date and time
+2. run program and program will login using your credentials and fetch rooms
+![alt text](fetch.png)
+3. navigate through the pages using n and p, enter the room number to select the room
+![alt text](slots.png)
+4. Select time slots to confirm booking
+![alt text](image.png)
+5. The system will confirm the booking when it is successful
+![alt text](confirmation.png)
 
-Mapping.json is used to map the resource type ID to a human readable name. This is used to display the room names in the output. The resource type ID is extracted from the room metadata and is used to determine the type of room (e.g. study room, meeting room, etc.).
+
+Mapping.json is used to map room names to their corresponding resource IDs for system queries. This enables the application to retrieve room information from the booking system. Resource IDs are extracted from the mapping and used to fetch availability and booking details.
