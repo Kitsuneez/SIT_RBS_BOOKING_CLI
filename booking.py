@@ -207,7 +207,7 @@ class Booking:
             "IS_APPRVL": CONFIRMATION_IS_APPRVL,
         }
         try:
-            response = session.post(CONFIRM_URL, data=booking_payload, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = session.post(CONFIRM_URL, data=booking_payload)
             response.raise_for_status()
             if response.status_code == 200:
                 print(f"{CYAN}[*] Finalizing booking...{RESET}")
