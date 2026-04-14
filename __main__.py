@@ -111,7 +111,10 @@ def handle_env_errors():
     """Checks for .env file and required variables, printing warnings or errors as needed."""
     dotenv_path = find_dotenv(usecwd=True)
     if not dotenv_path:
-        print(f"{YELLOW}No .env file found. Make sure to create one with the required variables.{RESET}")
+        print(f"{YELLOW}No .env file found. Creating a new one...{RESET}")
+        with open(".env", "w") as fl:
+            fl.write(f"USERNAME=your_username_here\nPASSWORD=your_password_here\nDATE=\"{date.today().strftime('%d %b %Y')}\"\nDEFAULT_SLOT_START_TIME=\"07:00\"\nDEFAULT_SLOT_END_TIME=\"22:00\"\n")
+        print(f"{GREEN}.env file created. Please fill in your credentials and try again.{RESET}")
         sys.exit(1)
     if not load_dotenv(dotenv_path, override=True):
         print(f"{RED}Failed to load .env file. Check the file and try again.{RESET}")
