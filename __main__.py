@@ -2,6 +2,9 @@
 Main entry point for the booking system. 
 Initializes the Booking class and retrieves available slots.
 """
+from datetime import date, datetime
+import os
+
 from dotenv import find_dotenv, load_dotenv
 import asyncio
 import math
@@ -104,15 +107,46 @@ async def main():
         return
     booking.book(room_name=selected_room)
 
-
-if __name__ == "__main__":
+def handle_env_errors():
+    """Checks for .env file and required variables, printing warnings or errors as needed."""
     dotenv_path = find_dotenv(usecwd=True)
     if not dotenv_path:
-        print(f"{YELLOW}No .env file found. Make sure to create one with the required variables.{RESET}")
+        print(f"{YELLOW}No .env file found. Creating a new one...{RESET}")
+        with open(".env", "w") as fl:
+            fl.write(f"USERNAME=your_username_here\nPASSWORD=your_password_here\nDATE=\"{date.today().strftime('%d %b %Y')}\"\nDEFAULT_SLOT_START_TIME=\"07:00\"\nDEFAULT_SLOT_END_TIME=\"22:00\"\n")
+        print(f"{GREEN}.env file created. Please fill in your credentials and try again.{RESET}")
         sys.exit(1)
+
     if not load_dotenv(dotenv_path, override=True):
         print(f"{RED}Failed to load .env file. Check the file and try again.{RESET}")
         sys.exit(1)
+    start_time_raw = os.getenv("DEFAULT_SLOT_START_TIME")
+    end_time_raw = os.getenv("DEFAULT_SLOT_END_TIME")
+    if not start_time_raw or not end_time_raw:
+        print(f"{YELLOW}Warning: DEFAULT_SLOT_START_TIME or DEFAULT_SLOT_END_TIME not set. Using defaults 07:00 and 22:00.{RESET}")
+    else:
+        try:
+            start_time = datetime.strptime(start_time_raw, "%H:%M").time()
+            end_time = datetime.strptime(end_time_raw, "%H:%M").time()
+            if start_time >= end_time:
+                print(f"{RED}Error: DEFAULT_SLOT_START_TIME must be before DEFAULT_SLOT_END_TIME.{RESET}")
+                sys.exit(1)
+        except ValueError:
+            print(f"{RED}Error: DEFAULT_SLOT_START_TIME and DEFAULT_SLOT_END_TIME must be in HH:MM format.{RESET}")
+            sys.exit(1)
+
+    if os.getenv("DATE"):
+        try:
+            date_obj = datetime.strptime(os.getenv("DATE"), "%d %b %Y").date()
+            if date_obj < date.today():
+                print(f"{YELLOW}Warning: specified date is in the past or not specified. Defaulting to today's date.{RESET}")
+        except ValueError:
+            print(f"{RED}Error: Invalid date format. Please use the format 'DD MMM YYYY'.{RESET}")
+            sys.exit(1)
+
+if __name__ == "__main__":
+    handle_env_errors()
+    dotenv_path = find_dotenv(usecwd=True)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
