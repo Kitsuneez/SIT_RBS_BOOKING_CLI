@@ -1,6 +1,3 @@
-DATE = "11 Apr 2026"
-DEFAULT_SLOT_START_TIME = "07:00"
-DEFAULT_SLOT_END_TIME = "22:00"
 START_URL = "https://rbs.singaporetech.edu.sg/SRB001/SRB001Page"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \

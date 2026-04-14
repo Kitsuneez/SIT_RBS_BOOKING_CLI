@@ -1,6 +1,7 @@
 """Handles the booking process, including retrieving available slots and making reservations."""
 
 from asyncio import gather, to_thread, create_task
+from datetime import date
 import json
 import re
 import os
@@ -21,8 +22,6 @@ from constants import (
     CONFIRMATION_IS_SUPT,
     CONFIRMATION_SLOT_STATUS,
     CONFIRMATION_SUPPT_EXEMP,
-    DEFAULT_SLOT_END_TIME,
-    DEFAULT_SLOT_START_TIME,
     FINALIZE_NUM_ATTND,
     FINALIZE_OVERWRITE,
     FINALIZE_PURPOSE,
@@ -31,7 +30,6 @@ from constants import (
     MAPPING_FILE,
     BOOKING_URL,
     BOOKING_HEADER,
-    DATE,
     REQUEST_TIMEOUT_SECONDS,
     GET_ALL_ROOMS_URL,
     CONFIRM_URL,
@@ -62,6 +60,9 @@ class Booking:
         self.mapping: MAPPING = {}
         self.rsrc_list: list[MAPPING] = []
         self.slots = {}
+        self.date = os.getenv("DATE", date.today().strftime("%d %b %Y"))
+        self.default_slot_start_time = os.getenv("DEFAULT_SLOT_START_TIME", "07:00")
+        self.default_slot_end_time = os.getenv("DEFAULT_SLOT_END_TIME", "22:00")
 
     async def get_slots(self):
         """
@@ -197,7 +198,7 @@ class Booking:
             "__RequestVerificationToken": token,
             "RSRC_ID": first_slot,
             "RSRC_TYP_ID": self.rsrc_list[0]["RSRC_TYP_ID"],
-            "SearchDate": DATE,
+            "SearchDate": self.date,
             "SlotList": json.dumps(slot_list),
             "APPRV_EXEMP": CONFIRMATION_APPRV_EXEMP,
             "SUPPT_EXEMP": CONFIRMATION_SUPPT_EXEMP,
@@ -298,9 +299,9 @@ class Booking:
         """
         parameter = [
             {
-                "MRB002Date": DATE,
-                "MRB002StartTime": DEFAULT_SLOT_START_TIME,
-                "MRB002EndTime": DEFAULT_SLOT_END_TIME,
+                "MRB002Date": self.date,
+                "MRB002StartTime": self.default_slot_start_time,
+                "MRB002EndTime": self.default_slot_end_time,
                 "ResourceList": batch,
             }
         ]

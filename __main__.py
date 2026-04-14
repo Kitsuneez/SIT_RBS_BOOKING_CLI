@@ -2,6 +2,9 @@
 Main entry point for the booking system. 
 Initializes the Booking class and retrieves available slots.
 """
+from datetime import date, datetime
+import os
+
 from dotenv import find_dotenv, load_dotenv
 import asyncio
 import math
@@ -104,8 +107,8 @@ async def main():
         return
     booking.book(room_name=selected_room)
 
-
-if __name__ == "__main__":
+def handle_env_errors():
+    """Checks for .env file and required variables, printing warnings or errors as needed."""
     dotenv_path = find_dotenv(usecwd=True)
     if not dotenv_path:
         print(f"{YELLOW}No .env file found. Make sure to create one with the required variables.{RESET}")
@@ -113,6 +116,20 @@ if __name__ == "__main__":
     if not load_dotenv(dotenv_path, override=True):
         print(f"{RED}Failed to load .env file. Check the file and try again.{RESET}")
         sys.exit(1)
+    if not os.getenv("DEFAULT_SLOT_START_TIME") or not os.getenv("DEFAULT_SLOT_END_TIME"):
+        print(f"{YELLOW}Warning: Default start or end time not set. Using defaults...{RESET}")
+    if os.getenv("DATE"):
+        try:
+            date_obj = datetime.strptime(os.getenv("DATE"), "%d %b %Y").date()
+            if date_obj < date.today():
+                print(f"{YELLOW}Warning: specified date is in the past or not specified. Defaulting to today's date.{RESET}")
+        except ValueError:
+            print(f"{RED}Error: Invalid date format. Please use the format 'DD MMM YYYY'.{RESET}")
+            sys.exit(1)
+
+if __name__ == "__main__":
+    handle_env_errors()
+    dotenv_path = find_dotenv(usecwd=True)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

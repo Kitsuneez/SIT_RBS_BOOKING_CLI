@@ -4,10 +4,13 @@
     - **powershell:** `.venv/Scripts/Activate.ps1`
     - **CMD:** `.venv/Scripts/activate.bat`
 3. `pip install -r requirements.txt`
-4. Add username and password for login into `.env`
+4. Add username and password for login into `.env` and specified dates and time
     ```env
     USERNAME=<email_address>
     PASSWORD=<your_password>
+    DATE = "11 Apr 2026"
+    DEFAULT_SLOT_START_TIME = "07:00"
+    DEFAULT_SLOT_END_TIME = "22:00"
     ```
 5. Run script
     `python .`
@@ -20,6 +23,9 @@
     ```env
     USERNAME=<email_address>
     PASSWORD=<your_password>
+    DATE = "11 Apr 2026"
+    DEFAULT_SLOT_START_TIME = "07:00"
+    DEFAULT_SLOT_END_TIME = "22:00"
     ```
 5. Run script
     `python .`
