@@ -7,7 +7,6 @@ import re
 from typing import TypedDict
 from urllib.parse import urlparse
 import requests
-from dotenv import load_dotenv
 from constants import (
     HEADERS,
     REQUEST_VERIFICATION_TOKEN_REGEX,
@@ -17,9 +16,6 @@ from constants import (
     REQUEST_TIMEOUT_SECONDS
 )
 from errors import LoginException
-
-
-load_dotenv()
 
 
 class LoginURLInfo(TypedDict):

@@ -1,11 +1,25 @@
-## Setup Guide
-1. `pip install -r requirements.txt`
-2. Add username and password for login into `.env`
+## Setup Guide (Windows)
+1. create virtual environment `python -m venv .venv`
+2. activate virtual environment `.venv/Scripts/activate`
+3. `pip install -r requirements.txt`
+4. Add username and password for login into `.env`
     ```
     USERNAME=<email_address>
     PASSWORD=<your_password>
     ```
-3. Run script
+5. Run script
+    `python .`
+
+## Setup Guide (Linux)
+1. create virtual environment `python -m venv .venv`
+2. activate virtual environment `source .venv/bin/activate`
+3. `pip install -r requirements.txt`
+4. Add username and password for login into `.env`
+    ```
+    USERNAME=<email_address>
+    PASSWORD=<your_password>
+    ```
+5. Run script
     `python .`
 
 **Note:** Confirmation of booking may take a while, so please be patient after confirming the booking. If you encounter a timeout error, please try again as it may be due to network issues or server response time.
