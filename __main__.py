@@ -2,10 +2,12 @@
 Main entry point for the booking system. 
 Initializes the Booking class and retrieves available slots.
 """
+from dotenv import find_dotenv, load_dotenv
 import asyncio
 import math
 import sys
 from booking import Booking
+from errors import LoginException, BookingException
 
 
 ROOMS_PER_PAGE = 5
@@ -104,8 +106,24 @@ async def main():
 
 
 if __name__ == "__main__":
+    dotenv_path = find_dotenv(usecwd=True)
+    if not dotenv_path:
+        print(f"{YELLOW}No .env file found. Make sure to create one with the required variables.{RESET}")
+        sys.exit(1)
+    if not load_dotenv(dotenv_path, override=True):
+        print(f"{RED}Failed to load .env file. Check the file and try again.{RESET}")
+        sys.exit(1)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n\nExiting... Goodbye!")
         sys.exit(0)
+    except LoginException as e:
+        print(f"{RED}Login failed: {e}{RESET}")
+        sys.exit(1)
+    except BookingException as e:
+        print(f"{RED}Booking failed: {e}{RESET}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"{RED}Configuration error: {e}{RESET}")
+        sys.exit(1)
