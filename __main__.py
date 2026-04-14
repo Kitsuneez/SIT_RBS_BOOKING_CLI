@@ -120,20 +120,20 @@ def handle_env_errors():
     if not load_dotenv(dotenv_path, override=True):
         print(f"{RED}Failed to load .env file. Check the file and try again.{RESET}")
         sys.exit(1)
-        start_time_raw = os.getenv("DEFAULT_SLOT_START_TIME")
-        end_time_raw = os.getenv("DEFAULT_SLOT_END_TIME")
-        if not start_time_raw or not end_time_raw:
-            print(f"{YELLOW}Warning: DEFAULT_SLOT_START_TIME or DEFAULT_SLOT_END_TIME not set. Using defaults 07:00 and 22:00.{RESET}")
-        else:
-            try:
-                start_time = datetime.strptime(start_time_raw, "%H:%M").time()
-                end_time = datetime.strptime(end_time_raw, "%H:%M").time()
-                if start_time >= end_time:
-                    print(f"{RED}Error: DEFAULT_SLOT_START_TIME must be before DEFAULT_SLOT_END_TIME.{RESET}")
-                    sys.exit(1)
-            except ValueError:
-                print(f"{RED}Error: DEFAULT_SLOT_START_TIME and DEFAULT_SLOT_END_TIME must be in HH:MM format.{RESET}")
+    start_time_raw = os.getenv("DEFAULT_SLOT_START_TIME")
+    end_time_raw = os.getenv("DEFAULT_SLOT_END_TIME")
+    if not start_time_raw or not end_time_raw:
+        print(f"{YELLOW}Warning: DEFAULT_SLOT_START_TIME or DEFAULT_SLOT_END_TIME not set. Using defaults 07:00 and 22:00.{RESET}")
+    else:
+        try:
+            start_time = datetime.strptime(start_time_raw, "%H:%M").time()
+            end_time = datetime.strptime(end_time_raw, "%H:%M").time()
+            if start_time >= end_time:
+                print(f"{RED}Error: DEFAULT_SLOT_START_TIME must be before DEFAULT_SLOT_END_TIME.{RESET}")
                 sys.exit(1)
+        except ValueError:
+            print(f"{RED}Error: DEFAULT_SLOT_START_TIME and DEFAULT_SLOT_END_TIME must be in HH:MM format.{RESET}")
+            sys.exit(1)
 
     if os.getenv("DATE"):
         try:
