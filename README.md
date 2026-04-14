@@ -4,7 +4,8 @@
     - **powershell:** `.venv/Scripts/Activate.ps1`
     - **CMD:** `.venv/Scripts/activate.bat`
 3. `pip install -r requirements.txt`
-4. Add username and password for login into `.env` and specified dates and time
+4. run `python .` to create .env
+5. update username, password, date, and slot window into `.env`
     ```env
     USERNAME=<email_address>
     PASSWORD=<your_password>
@@ -12,14 +13,15 @@
     DEFAULT_SLOT_START_TIME = "07:00"
     DEFAULT_SLOT_END_TIME = "22:00"
     ```
-5. Run script
+6. Run script
     `python .`
 
 ## Setup Guide (Linux)
 1. create virtual environment `python -m venv .venv`
 2. activate virtual environment `source .venv/bin/activate`
 3. `pip install -r requirements.txt`
-4. Add username and password for login into `.env`
+4. run `python .` to create .env
+5. update username, password, date, and slot window into `.env`
     ```env
     USERNAME=<email_address>
     PASSWORD=<your_password>
@@ -27,7 +29,7 @@
     DEFAULT_SLOT_START_TIME = "07:00"
     DEFAULT_SLOT_END_TIME = "22:00"
     ```
-5. Run script
+6. Run script
     `python .`
 
 **Note:** Confirmation of booking may take a while, so please be patient after confirming the booking. If you encounter a timeout error, please try again as it may be due to network issues or server response time.
@@ -39,7 +41,7 @@
 <hr>
 
 ## Example
-1. Set `DATE`, `DEFAULT_SLOT_START_TIME`, and `DEFAULT_SLOT_END_TIME` in `constants.py` to your desired booking date and time
+1. Set `DATE`, `DEFAULT_SLOT_START_TIME`, and `DEFAULT_SLOT_END_TIME` in `.env` to your desired booking date and time
 <br>
 
 2. run program and program will login using your credentials and fetch rooms
