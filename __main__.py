@@ -106,11 +106,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
-        dotenv_path = find_dotenv(usecwd=True)
-        load_dotenv(dotenv_path, override=True)
-    except Exception as e:
-        print(f"{RED}Error loading environment variables: {e}{RESET}")
+    dotenv_path = find_dotenv(usecwd=True)
+    if not dotenv_path:
+        print(f"{YELLOW}No .env file found. Make sure to create one with the required variables.{RESET}")
+        sys.exit(1)
+    if not load_dotenv(dotenv_path, override=True):
+        print(f"{RED}Failed to load .env file. Check the file and try again.{RESET}")
         sys.exit(1)
     try:
         asyncio.run(main())
@@ -122,4 +123,7 @@ if __name__ == "__main__":
         sys.exit(1)
     except BookingException as e:
         print(f"{RED}Booking failed: {e}{RESET}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"{RED}Configuration error: {e}{RESET}")
         sys.exit(1)

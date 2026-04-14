@@ -1,9 +1,11 @@
 ## Setup Guide (Windows)
 1. create virtual environment `python -m venv .venv`
-2. activate virtual environment `.venv/Scripts/activate`
+2. activate virtual environment 
+    - **powershell:** `.venv/Scripts/Activate.ps1`
+    - **CMD:** `.venv/Scripts/activate.bat`
 3. `pip install -r requirements.txt`
 4. Add username and password for login into `.env`
-    ```
+    ```env
     USERNAME=<email_address>
     PASSWORD=<your_password>
     ```
@@ -15,7 +17,7 @@
 2. activate virtual environment `source .venv/bin/activate`
 3. `pip install -r requirements.txt`
 4. Add username and password for login into `.env`
-    ```
+    ```env
     USERNAME=<email_address>
     PASSWORD=<your_password>
     ```
